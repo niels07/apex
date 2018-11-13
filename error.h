@@ -10,7 +10,8 @@ typedef enum {
     APEX_ERROR_CODE_SYNTAX,
     APEX_ERROR_CODE_TYPE,
     APEX_ERROR_CODE_RUNTIME,
-    APEX_ERROR_CODE_ARGUMENT
+    APEX_ERROR_CODE_ARGUMENT,
+    APEX_ERROR_CODE_REFERENCE
 } ApexErrorCode;
 
 typedef struct ApexErrorHandler ApexErrorHandler;
@@ -25,6 +26,7 @@ extern void apex_error_type(const char *, ...);
 extern void apex_error_nomem(const char *, ...);
 extern void apex_error_io(const char *, ...);
 extern void apex_error_argument(const char *, ...);
+extern void apex_error_reference(const char *, ...);
 extern void apex_error_print(ApexErrorHandler *);
 
 #endif 

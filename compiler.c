@@ -220,24 +220,13 @@ static void mul(ApexCompiler *cmpl, ApexAstNode *left, ApexAstNode *right) {
     }
 }
 
-static void print_int(ApexCompiler *cmpl, ApexAstNode *arg) {
-    ADD_BYTE(cmpl, APEX_VM_OP_PRINT);
-}
+static void call(ApexCompiler *cmpl, ApexAstNode *left, ApexAstNode *right) {
+    handle_node(cmpl, right);
+    handle_node(cmpl, left);
 
-static void print(ApexCompiler *cmpl, ApexAstNode *arg) {
-    handle_node(cmpl, arg); 
-
-    switch (arg->value_type) {
-    case APEX_TYPE_FLT:
-        break;
-
-    case APEX_TYPE_INT:
-        print_int(cmpl, arg);
-        break;
-
-    default:
-        invalid_operation1("print", arg);
-        break;
+    ADD_BYTE(cmpl, APEX_VM_OP_CALL);
+    if (right && right->node_type == APEX_AST_NODE_LIST) {
+        ADD_VALUE(int, cmpl, APEX_AST_NODE_LIST(right)->n);
     }
 }
 
@@ -259,8 +248,8 @@ static void opr(ApexCompiler *cmpl, ApexAstNode *node) {
         div(cmpl, node->left, node->right);
         break;
 
-    case APEX_AST_OPR_PRINT:
-        print(cmpl, node->left);
+    case APEX_AST_OPR_CALL:
+        call(cmpl, node->left, node->right);
         break;
     }
 }
@@ -283,19 +272,43 @@ static void handle_node(ApexCompiler *cmpl, ApexAstNode *node) {
         ADD_VALUE(float, cmpl, APEX_AST_NODE_FLT(node));
         break;
 
-    case APEX_AST_NODE_STR:
-        node->value_type = APEX_TYPE_STR;
-        break;
+    case APEX_AST_NODE_STR: {
+        char *str = APEX_AST_NODE_STR(node);
+        size_t len = strlen(str) + 1;
 
-    case APEX_AST_NODE_ID:
-        node->value_type = get_id_type(node);
+        node->value_type = APEX_TYPE_STR;
+        ADD_BYTE(cmpl, APEX_VM_OP_PUSH_STR);
+        check_code_size(cmpl, len);
+        memcpy(&TOP(cmpl), str, len);
+        cmpl->code->n += len;
         break;
+    }
+
+    case APEX_AST_NODE_ID: {
+        char *str = APEX_AST_NODE_ID(node);
+        size_t len = strlen(str) + 1;
+
+        ADD_BYTE(cmpl, APEX_VM_OP_LOAD_REF);
+        node->value_type = get_id_type(node);
+        check_code_size(cmpl, len);
+        memcpy(&TOP(cmpl), str, len);
+        cmpl->code->n += len;
+        break;
+    }
+    
+    case APEX_AST_NODE_LIST: { 
+        ApexAst *ast = APEX_AST_NODE_LIST(node);
+        size_t i;
+
+        for (i = 0; i < ast->n; i++) {
+            ApexAstNode *node = ast->nodes[i];
+            handle_node(cmpl, node);
+        }
+        break;
+    }
 
     default:
-        apex_error_throw(
-            APEX_ERROR_CODE_INTERNAL,
-            "unkown node type: %d",
-            node->node_type);
+        apex_error_internal("unkown node type: %d", node->node_type);
         break;
     }
 }

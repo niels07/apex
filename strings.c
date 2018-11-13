@@ -1,7 +1,8 @@
 #include <string.h>
 #include "malloc.h"
 
-#include "str.h"
+#include "hash.h"
+#include "strings.h"
 
 #define STR_TABLE_INIT_SIZE 256
 
@@ -11,23 +12,13 @@ struct ApexString {
     ApexString *next;
 };
 
-struct ApexTable {
+struct ApexStringTable {
     size_t size;
     size_t n;
     ApexString **entries;
 };
 
-static size_t
-hash(const char *str) {
-    size_t value = 0;
-
-    while (*str) {
-        value = ((value << 5) + value) + *str++;
-    }
-    return value;
-}
-
-static void resize_table(ApexStringTable *tbl) {
+static void string_table_resize(ApexStringTable *tbl) {
     size_t size = tbl->size * 2;
     ApexString **entries = apex_calloc(size, sizeof(ApexString));
     size_t i;
@@ -37,7 +28,7 @@ static void resize_table(ApexStringTable *tbl) {
         size_t h;
         
         if (str) {
-            h = hash(str->value) % size;
+            h = apex_do_hash(str->value) % size;
             entries[h] = str;
         }
     }
@@ -47,7 +38,7 @@ static void resize_table(ApexStringTable *tbl) {
 
 static void checkTableSize(ApexStringTable *tbl) {
     if (tbl->n == tbl->size) {
-        resize_table(tbl);
+        string_table_resize(tbl);
     }
 }
 
@@ -72,7 +63,7 @@ ApexStringTable *apex_string_table_new(void) {
 
 ApexString *apex_string_new(ApexStringTable *tbl, const char *value) {
     ApexString *str;
-    size_t h = hash(value) % tbl->size;
+    size_t h = apex_do_hash(value) % tbl->size;
     size_t l = strlen(value);
     
     str = tbl->entries[h];

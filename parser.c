@@ -67,12 +67,12 @@ static void unexp(ApexParser *parser, size_t nExp, ...) {
     va_start(vl, nExp);
     for (i = 0; i < nExp; i++) {
         ApexToken exp = va_arg(vl, ApexToken);
-        const char *expStr = apex_lexer_get_token_str(exp);
+        const char *exp_str = apex_lexer_get_token_str(exp);
 
         if (i > 0) {
-            sprintf(buf, ", '%s'", expStr);
+            sprintf(buf, "%s, '%s'", buf, exp_str);
         } else {
-            sprintf(buf, "%s'", expStr);
+            sprintf(buf, "'%s'", buf, exp_str);
         }
     }
     va_end(vl);
@@ -90,7 +90,6 @@ static int accept(ApexParser *parser, ApexToken tk) {
 
 static int expect(ApexParser *parser, ApexToken exp) {
     ApexToken tk = GET_TOKEN(parser);
-    const char *tkstr;
 
     if (tk == exp) {
         parser->value = apex_lexer_get_value(parser->lexer);
@@ -114,6 +113,7 @@ static void expr(ApexParser *);
 static void pri_expr(ApexParser *parser) {
     if (accept(parser, APEX_TOKEN_ID)) {
         char *id = GET_STR(parser);
+        apex_ast_id(parser->ast, id);
 
     } else if (accept(parser, APEX_TOKEN_INT)) {
         int value = GET_INT(parser);
@@ -123,7 +123,8 @@ static void pri_expr(ApexParser *parser) {
         float value = GET_FLT(parser);
 
     } else if (accept(parser, APEX_TOKEN_STR)) {
-        char *value = GET_STR(parser);
+        char *str = GET_STR(parser);
+        apex_ast_str(parser->ast, str);
 
     } else if (accept(parser, '(')) {
         expr(parser);
@@ -133,13 +134,49 @@ static void pri_expr(ApexParser *parser) {
     }
 }
 
-/* un_expr
+static void arg_expr_lst(ApexParser *parser) {
+    ApexAst *ast = parser->ast;
+    ApexAst *list = apex_ast_new();
+
+    parser->ast = list;
+    do {
+        expr(parser);
+    } while (accept(parser, ','));
+    parser->ast = ast;
+    apex_ast_list(parser->ast, list);
+}
+
+/* post_expr
  * : pri_expr
- * | INC pri_expr
- * | DEC pri_expr
+ * | post_expr '[' expr ']'
+ * | post_expr '(' ')'
+ * | post_expr '(' arg_expr_lst ')'
+ * | post_expr '.' ID
+ * | post_expr INC
+ * | post_expr DEC
+ */
+static void post_expr(ApexParser *parser) {
+    ApexAstNode *left, *right = NULL;
+
+    pri_expr(parser);
+    if (accept(parser, '(')) {
+        left = apex_ast_pop(parser->ast);
+        if (!accept(parser, ')')) {
+            arg_expr_lst(parser);   
+        }
+        expect(parser, ')');
+        right = apex_ast_pop(parser->ast);
+        apex_ast_opr2(parser->ast, APEX_AST_OPR_CALL, left, right);
+    }
+}
+
+/* un_expr
+ * : post_expr
+ * | INC un_expr
+ * | DEC un_expr
  */
 static void un_expr(ApexParser *parser) {
-    pri_expr(parser);
+    post_expr(parser);
 }
 
 /* mul_expr
@@ -195,7 +232,6 @@ static void add_expr(ApexParser *parser) {
     }
 }
 
-
 /* expr
  * : asgExpr 
  * | expr ',' asgExpr 
@@ -224,12 +260,13 @@ static void expr_stmt(ApexParser *p) {
     expect(p, APEX_TOKEN_END_STMT);
 }
 
+/* stmt
+ * : expr_stmt
+ */
 static void stmt(ApexParser *parser) {
     ApexAstNode *node;
 
     expr_stmt(parser);
-    node = apex_ast_pop(parser->ast);
-    apex_ast_opr1(parser->ast, APEX_AST_OPR_PRINT, node);
 }
 
 /* block 
@@ -255,8 +292,17 @@ static void module_spec(ApexParser *parser) {
  * : IMPORT STR END_STMT
  */
 static void import(ApexParser *parser) {
+    char *value;
+    ApexAstNode *node;
+
     expect(parser, APEX_TOKEN_IMPORT);
     expect(parser, APEX_TOKEN_STR);
+
+    value = GET_STR(parser);
+    apex_ast_str(parser->ast, value);
+    node = apex_ast_pop(parser->ast);
+    apex_ast_opr1(parser->ast, APEX_AST_OPR_IMPORT, node);
+
     expect(parser, APEX_TOKEN_END_STMT);
 }
 
@@ -264,10 +310,11 @@ static void import(ApexParser *parser) {
  * : module_spec
  * | program func_decl
  * | program import
+ * | block
  */
 static void program(ApexParser *parser) {
     ApexToken tk = NEXT_TOKEN(parser);
-    module_spec(parser);
+/*    module_spec(parser); */
 
     switch (tk) {
     case APEX_TOKEN_IMPORT:

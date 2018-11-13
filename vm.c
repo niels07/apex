@@ -144,8 +144,8 @@ static void print_op(ApexVm *vm) {
         printf("%d: %s\n", APEX_VM_OP_ADD, "div");
         break;
 
-    case APEX_VM_OP_PRINT:
-        printf("%d: print\n", APEX_VM_OP_PRINT);
+    case APEX_VM_OP_CALL:
+        printf("%d: print\n", APEX_VM_OP_CALL);
         break;
 
     case APEX_VM_OP_END:
@@ -160,6 +160,15 @@ static void push_int(ApexVm *vm) {
     vm->stack_top->type = APEX_TYPE_INT;
     vm->stack_top++;
     vm->p += sizeof(int);
+    vm->stack_n++;
+}
+
+static void push_str(ApexVm *vm) {
+    vm->p++;
+    APEX_VALUE_STR(vm->stack_top) = ((char *)vm->p);
+    vm->stack_top->type = APEX_TYPE_STR;
+    vm->p += strlen(APEX_VALUE_STR(vm->stack_top)) + 1;
+    vm->stack_top++;
     vm->stack_n++;
 }
 
@@ -227,9 +236,64 @@ static void div(ApexVm *vm) {
     BIN_EXPR(vm, /);    
 }
 
-static void print(ApexVm *vm) {
+static void load_ref(ApexVm *vm) {
+    char *id;
+    size_t len;
+    ApexValue *value;
+    ApexType type;
+
+    vm->p++;
+    id = (char *)vm->p;
+    len = strlen(id) + 1;
+    vm->p += len;
+    value = apex_hash_table_get_value(vm->table, id);
+
+    if (!value) {
+        apex_error_reference("undefined identifier: %s", id);
+    }
+    type = APEX_TYPE_OF(value);
+
+    switch (type) {
+    case APEX_TYPE_INT:
+        APEX_VALUE_INT(vm->stack_top) = APEX_VALUE_INT(value);
+        break;
+
+    case APEX_TYPE_FUNC:
+        APEX_VALUE_FUNC(vm->stack_top) = APEX_VALUE_FUNC(value);
+        break;
+
+    default: 
+        break;
+    }
+    vm->stack_top->type = type;
+    vm->stack_top++;
+    vm->stack_n++;
+}
+
+static void call(ApexVm *vm) {
+    ApexValue *top;
+    int argc;
+    ApexFunc *func;
+
+    top = apex_vm_pop(vm);
+
+    switch (APEX_TYPE_OF(top)) {
+    case APEX_TYPE_FUNC:
+        vm->p++;
+        argc = *((int *)vm->p);
+        vm->p += sizeof(int);
+        APEX_VALUE_FUNC(top)(argc);
+        break;
+
+    default:
+        apex_error_reference("called object is not a function");
+    }
+    vm->p++;
+}
+
+static void import(ApexVm *vm) {
     ApexValue *top = apex_vm_pop(vm);
-    printf("%d\n", top->data.intval);
+    apex_hash_table_import(vm->table, APEX_VALUE_STR(top));
     vm->p++;
 }
 
@@ -250,6 +314,10 @@ void apex_vm_dispatch(ApexVm *vm) {
             push_int(vm);
             break;
 
+        case APEX_VM_OP_PUSH_STR:
+            push_str(vm);
+            break;
+
         case APEX_VM_OP_ADD:
             add(vm);
             break;
@@ -266,8 +334,12 @@ void apex_vm_dispatch(ApexVm *vm) {
             div(vm);
             break;
 
-        case APEX_VM_OP_PRINT:
-            print(vm);
+        case APEX_VM_OP_LOAD_REF:
+            load_ref(vm);
+            break;
+
+        case APEX_VM_OP_CALL:
+            call(vm);
             break;
 
         case APEX_VM_OP_END:
@@ -290,6 +362,20 @@ void apex_vm_print(ApexVm *vm) {
             vm->p += sizeof(int);
             break;
 
+        case APEX_VM_OP_PUSH_STR: {
+            vm->p++;
+            printf("[%d] %s (%s)\n", APEX_VM_OP_PUSH_STR, "push_str", (char *)vm->p);
+            vm->p += strlen((char *)vm->p) + 1;
+            break;
+        }
+
+        case APEX_VM_OP_LOAD_REF: {
+            vm->p++;
+            printf("[%d] %s (%s)\n", APEX_VM_OP_LOAD_REF, "load_ref", (char *)vm->p);
+            vm->p += strlen((char *)vm->p) + 1;
+            break;
+        }
+
         case APEX_VM_OP_ADD:
             printf("[%d] %s\n", APEX_VM_OP_ADD, "add");
             vm->p++;
@@ -310,9 +396,10 @@ void apex_vm_print(ApexVm *vm) {
             vm->p++;
             break;
 
-        case APEX_VM_OP_PRINT:
-            printf("[%d] print\n", APEX_VM_OP_PRINT);
+        case APEX_VM_OP_CALL:
+            printf("[%d] call\n", APEX_VM_OP_CALL);
             vm->p++;
+            vm->p += sizeof(int);
             break;
 
         case APEX_VM_OP_END:

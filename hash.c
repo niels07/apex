@@ -1,12 +1,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <dlfcn.h>
 
 #include "malloc.h"
 #include "value.h"
 #include "hash.h"
+#include "api.h"
+#include "error.h"
 
-typedef unsigned int HashKey;
+#define MODULE_TABLE_SIZE 256
+
 
 typedef struct {
     char *str;
@@ -34,7 +38,7 @@ struct ApexHashTable {
 #define HAVE_KEY(node, key) \
     (strncmp((node)->key.str, key, node->key.len) == 0)
 
-static HashKey hash(const char *str) {
+HashKey apex_do_hash(const char *str) {
     HashKey h = 0;
 
     while (*str) {
@@ -51,7 +55,7 @@ static Node *get_node(ApexHashTable *table, const char *key) {
         return NULL;
     }
 
-    h = hash(key) % table->size;
+    h = apex_do_hash(key) % table->size;
     node = table->nodes[h];
 
     while (node != NULL) {
@@ -85,7 +89,7 @@ static Node *table_new_entry(
     const char *key,
     const NodeData *data) {
 
-    HashKey h = hash(key) % table->size;
+    HashKey h = apex_do_hash(key) % table->size;
     Node *node = table->nodes[h];
 
     while (node && node->next) {
@@ -127,7 +131,7 @@ ApexHashTable *resize_table(ApexHashTable *table, size_t size) {
         HashKey h;
             
         if (node) {
-            HashKey h = hash(node->key.str) % size;
+            HashKey h = apex_do_hash(node->key.str) % size;
             ntable->nodes[h] = node;
         }
     }
@@ -162,8 +166,11 @@ void apex_hash_table_set_value(
     node->type = APEX_NODE_VALUE;
 }
 
-void apex_hash_table_remove(ApexHashTable *table, const char *key) {
-    HashKey h = hash(key) % table->size;
+void apex_hash_table_remove(
+    ApexHashTable *table,
+    const char *key) {
+
+    HashKey h = apex_do_hash(key) % table->size;
     Node *node = table->nodes[h];
 
     while (node) {
@@ -204,7 +211,9 @@ ApexValue *apex_hash_table_get_value(
     const char *key) {
 
     Node *node = get_node(table, key);
-    return node ? &node->data.value: NULL;
+    return node && node->type == APEX_NODE_VALUE
+        ? &node->data.value
+        : NULL;
 }
 
 ApexHashTable *apex_hash_table_get_table(
@@ -212,6 +221,45 @@ ApexHashTable *apex_hash_table_get_table(
     const char *key) {
 
     Node *node = get_node(table, key);
-    return node ? node->data.table : NULL;
+    return node && node->type == APEX_NODE_TABLE 
+        ? node->data.table 
+        : NULL;
 }
+
+void apex_hash_table_import(ApexHashTable *table, const char *module_name) {
+    char path[256];
+    void *handle;
+    struct __ApexExport *export;
+    ApexHashTable *module;
+    ApexValue value;
+    size_t i;
+
+    sprintf(path, "modules/lib%s.so", module_name);
+     
+    handle = dlopen(path, RTLD_LAZY);
+    if (!handle) {
+        apex_error_io("unable to load %s", path);
+    }
+    export = dlsym(handle, "__apex_export");
+    module = apex_hash_table_get_table(table, module_name);
+
+    if (!module) {
+        module = apex_hash_table_new(MODULE_TABLE_SIZE);
+        apex_hash_table_set_table(table, module_name, module);
+    }
+
+    for (i = 0; export[i].name; i++) {
+        switch (export[i].type) {
+        case APEX_TYPE_INT:
+            APEX_VALUE_INT(&value) = export[i].intval;
+            break;
+
+        case APEX_TYPE_FLT:
+            APEX_VALUE_FUNC(&value) = export[i].func;
+            break;
+        }
+        apex_hash_table_set_value(table, export[i].name, &value);
+    }
+}
+
 

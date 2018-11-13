@@ -10,13 +10,15 @@ typedef unsigned char ApexByte;
 
 typedef enum {
     APEX_VM_OP_PUSH_INT,
+    APEX_VM_OP_PUSH_STR,
+    APEX_VM_OP_LOAD_REF,
     APEX_VM_OP_ADD,
     APEX_VM_OP_SUB,
     APEX_VM_OP_MUL,
     APEX_VM_OP_DIV,
     APEX_VM_OP_MOD,
     APEX_VM_OP_AND,
-    APEX_VM_OP_PRINT,
+    APEX_VM_OP_CALL,
     APEX_VM_OP_END
 } ApexVmOp;
 

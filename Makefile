@@ -1,8 +1,8 @@
 PWD:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 CC=gcc
-CFLAGS=-g -std=c89 -pedantic -I$(PWD) -Wall -Wno-switch
-LDFLAGS=-lm
-OBJ=error.o malloc.o lexer.o parser.o io.o compiler.o str.o vm.o ast.o value.o hash.o api.o
+CFLAGS=-g -std=c89 -pedantic -I$(PWD) -Wall -Wno-switch 
+LDFLAGS=-lm -ldl
+OBJ=error.o malloc.o lexer.o parser.o io.o compiler.o strings.o vm.o ast.o value.o hash.o api.o
 BIN=apex
 
 all: $(OBJ) main.o
@@ -32,8 +32,8 @@ compiler.o: compiler.c compiler.h
 vm.o: vm.c vm.h
 	$(CC) $(CFLAGS) -c vm.c
 
-str.o: str.c str.h
-	$(CC) $(CFLAGS) -c str.c
+strings.o: strings.c strings.h
+	$(CC) $(CFLAGS) -c strings.c
 
 ast.o: ast.c ast.h
 	$(CC) $(CFLAGS) -c ast.c

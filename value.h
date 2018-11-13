@@ -10,7 +10,7 @@ typedef enum {
     APEX_TYPE_NONE
 } ApexType;
 
-typedef void ApexFunc(void);
+typedef void ApexFunc(int);
 
 typedef struct ApexValue {
     ApexType type;

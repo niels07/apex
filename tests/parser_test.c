@@ -8,6 +8,8 @@
 #include "io.h"
 #include "lexer.h"
 
+static void print_ast(ApexAst *);
+
 static void print_node_data(ApexAstNode *node, char *type) {
     printf("%s: ", type);
     switch (node->node_type) {
@@ -24,6 +26,11 @@ static void print_node_data(ApexAstNode *node, char *type) {
 
     case APEX_AST_NODE_STR:
         printf("%s ", APEX_AST_NODE_STR(node));
+        break;
+
+    case APEX_AST_NODE_LIST:
+        printf("list ");
+        print_ast(APEX_AST_NODE_LIST(node));
         break;
 
     case APEX_AST_NODE_OPR:
@@ -47,8 +54,8 @@ static void print_node_data(ApexAstNode *node, char *type) {
             printf("&&");
             break;
 
-        case APEX_AST_OPR_PRINT:
-            printf("print");
+        case APEX_AST_OPR_CALL:
+            printf("call");
             break;
 
         default:
@@ -79,6 +86,16 @@ static void print_node(ApexAstNode *node, int space, char *type) {
     putchar('\n'); 
     print_node(node->left, space, "left"); 
 }
+
+static void print_ast(ApexAst *ast) {
+    size_t i;
+
+    for (i = 0; i < ast->n; i++) {
+        ApexAstNode *node = ast->nodes[i];
+        print_node(node, 0, "root");
+    } 
+
+}
   
 int main(void) {
     int i;
@@ -88,11 +105,7 @@ int main(void) {
     ApexAst *ast = apex_ast_new();
     ApexParser *parser = apex_parser_new(lexer, ast);
     apex_parser_parse(parser);
-    
-    for (i = 0; i < ast->n; i++) {
-        node = ast->nodes[i];
-        print_node(node, 0, "root");
-    } 
+    print_ast(ast);    
     return 0;
 }
 

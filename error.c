@@ -19,7 +19,8 @@ static const char *ERROR_MESSAGES[] = {
     "syntax",
     "type",
     "runtime",
-    "argument"
+    "argument",
+    "reference"
 };
 
 static ApexErrorHandler handlers[64];
@@ -102,3 +103,8 @@ void apex_error_nomem(const char *fmt, ...) {
 void apex_error_argument(const char *fmt, ...) {
     throw_error(APEX_ERROR_CODE_ARGUMENT, fmt);
 }
+
+void apex_error_reference(const char *fmt, ...) {
+    throw_error(APEX_ERROR_CODE_REFERENCE, fmt);
+}
+
