@@ -40,7 +40,7 @@ static void build_file(Options *opts) {
     ApexCompiler *compiler = apex_compiler_new(ast, table);
 
     apex_parser_parse(parser); 
-    apex_compiler_compile(compiler, opts->output_filename);
+    apex_compiler_compile(compiler, opts->output_filename); 
 }
 
 static int opt_set(Options *options, Mode mode) {
@@ -50,6 +50,9 @@ static int opt_set(Options *options, Mode mode) {
 static void exec_file(Options *opts) {
     ApexHashTable *table = apex_hash_table_new(HASH_TABLE_INIT_SIZE);
     ApexVm *vm = apex_vm_new(table, opts->input_filename);
+
+    extern void apex_api_init(ApexVm *);
+    apex_api_init(vm);
     if (opt_set(opts, MODE_DEBUG)) {
         apex_vm_set_debug(vm, 1);
     }

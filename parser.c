@@ -6,7 +6,7 @@
 #include "error.h"
 #include "malloc.h"
 #include "parser.h"
-#include "value.h"
+#include <apex/value.h>
 
 struct ApexParser {
     ApexLexer *lexer;
@@ -21,23 +21,12 @@ ApexParser *apex_parser_new(ApexLexer *lexer, ApexAst *ast) {
     return parser;
 }
 
-#define GET_TOKEN(parser) \
-    (apex_lexer_get_token((parser)->lexer))
-
-#define NEXT_TOKEN(parser) \
-    (apex_lexer_next_token((parser)->lexer))
-
-#define PEEK(p) \
-    (apex_lexer_peek((parser)->lexer))
-
-#define GET_INT(parser) \
-    APEX_VALUE_INT(parser->value)
-
-#define GET_FLT(parser) \
-    APEX_VALUE_FLT(parser->value)
-
-#define GET_STR(parser) \
-    APEX_VALUE_STR(parser->value)
+#define GET_TOKEN(parser) (apex_lexer_get_token((parser)->lexer))
+#define NEXT_TOKEN(parser) (apex_lexer_next_token((parser)->lexer))
+#define PEEK(parser) (apex_lexer_peek((parser)->lexer))
+#define GET_INT(parser) APEX_VALUE_INT(parser->value)
+#define GET_FLT(parser) APEX_VALUE_FLT(parser->value)
+#define GET_STR(parser) APEX_VALUE_STR(parser->value)
 
 static void error(ApexParser *parser, const char *fmt, ...) {
     int lineno = apex_lexer_get_lineno(parser->lexer);
@@ -72,11 +61,11 @@ static void unexp(ApexParser *parser, size_t nExp, ...) {
         if (i > 0) {
             sprintf(buf, "%s, '%s'", buf, exp_str);
         } else {
-            sprintf(buf, "'%s'", buf, exp_str);
+            sprintf(buf, "%s %s'", buf, exp_str);
         }
     }
     va_end(vl);
-    apex_error_throw(APEX_ERROR_CODE_SYNTAX, "%s on line %d", buf, lineno);
+    apex_error_syntax("%s on line %d", buf, lineno);
 }
 
 static int accept(ApexParser *parser, ApexToken tk) {
@@ -101,7 +90,6 @@ static int expect(ApexParser *parser, ApexToken exp) {
 }
 
 static void expr(ApexParser *);
-
 
 /* pri_expr 
  * : ID
@@ -134,6 +122,10 @@ static void pri_expr(ApexParser *parser) {
     }
 }
 
+/* arg_expr_lst
+ * : expr
+ * | arg_expr_lst ',' expr
+ */
 static void arg_expr_lst(ApexParser *parser) {
     ApexAst *ast = parser->ast;
     ApexAst *list = apex_ast_new();
@@ -142,6 +134,7 @@ static void arg_expr_lst(ApexParser *parser) {
     do {
         expr(parser);
     } while (accept(parser, ','));
+
     parser->ast = ast;
     apex_ast_list(parser->ast, list);
 }
@@ -157,15 +150,16 @@ static void arg_expr_lst(ApexParser *parser) {
  */
 static void post_expr(ApexParser *parser) {
     ApexAstNode *left, *right = NULL;
-
+    
     pri_expr(parser);
+
     if (accept(parser, '(')) {
-        left = apex_ast_pop(parser->ast);
+        right = apex_ast_pop(parser->ast);
         if (!accept(parser, ')')) {
             arg_expr_lst(parser);   
         }
         expect(parser, ')');
-        right = apex_ast_pop(parser->ast);
+        left = apex_ast_pop(parser->ast);
         apex_ast_opr2(parser->ast, APEX_AST_OPR_CALL, left, right);
     }
 }
@@ -252,12 +246,12 @@ static void decln(ApexParser *p) {
  * : END_STMT
  * | expr END_STMT
  */
-static void expr_stmt(ApexParser *p) {
-    if (accept(p, APEX_TOKEN_END_STMT)) {
+static void expr_stmt(ApexParser *parser) {    
+    if (accept(parser, APEX_TOKEN_END_STMT)) {
         return; 
     }
-    expr(p);
-    expect(p, APEX_TOKEN_END_STMT);
+    expr(parser);
+    expect(parser, APEX_TOKEN_END_STMT);
 }
 
 /* stmt
@@ -274,9 +268,12 @@ static void stmt(ApexParser *parser) {
  * | stmt_list stmt 
  */
 static void block(ApexParser *parser) {
+    ApexToken tk;
+    char *tkstr;
     do {
         stmt(parser);
     } while (!accept(parser, APEX_TOKEN_END)); 
+    accept(parser, APEX_TOKEN_END_STMT);
 }
 
 /* module_spec
@@ -315,16 +312,18 @@ static void import(ApexParser *parser) {
 static void program(ApexParser *parser) {
     ApexToken tk = NEXT_TOKEN(parser);
 /*    module_spec(parser); */
-
-    switch (tk) {
-    case APEX_TOKEN_IMPORT:
-        import(parser);
-        break;
-
-    default:
-        block(parser);
-        break;
-    }
+     do {
+        tk = GET_TOKEN(parser);
+        switch (tk) {
+        case APEX_TOKEN_IMPORT:
+            import(parser);
+            break;
+        default:        
+            block(parser);            
+            break;
+        }
+        tk = GET_TOKEN(parser);
+    } while (tk != APEX_TOKEN_EOS);
 }
 
 void apex_parser_parse(ApexParser *parser) {

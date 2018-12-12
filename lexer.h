@@ -2,7 +2,7 @@
 #define APX_LEX_H
 
 #include "io.h"
-#include "value.h"
+#include <apex/value.h>
 
 typedef struct ApexLexer ApexLexer;
 

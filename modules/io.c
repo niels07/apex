@@ -1,11 +1,13 @@
 #include <stdio.h>
-#include "api.h"
+#include <apex.h>
+
+APEX_NEW_MODULE();
 
 void apex_io_print(int argc) {
     int i;
 
     for (i = 0; i < argc; i++) {
-        ApexValue *value = apex_pop();
+        ApexValue *value = APEX_POP();
 
         switch (APEX_TYPE_OF(value)) {
         case APEX_TYPE_INT:
@@ -22,11 +24,7 @@ void apex_io_print(int argc) {
     }
 }
 
-APEX_MODULE = "io";
-
-APEX_EXPORT_BEGIN
-
-    APEX_EXPORT_FUNC ("print", apex_io_print )
-
-APEX_EXPORT_END;
-
+APEX_EXPORT {
+    APEX_EXPORT_FUNC("print", apex_io_print),
+    APEX_EXPORT_END
+};

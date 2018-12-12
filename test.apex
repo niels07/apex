@@ -1,2 +1,3 @@
-print(2 + 3 * 5 / 10 + 9)
+import "io"
+print(5 * 2)
 end

@@ -28,6 +28,7 @@ struct ApexCompiler {
     ApexHashTable *table;
     ApexAst *ast;
     ApexVmCode *code;
+    size_t size;
 };
 
 static void check_code_size(ApexCompiler *cmpl, size_t size) {
@@ -44,15 +45,15 @@ static void invalid_operation1(const char *opr, ApexAstNode *node) {
     apex_error_type(
         "operation '%s' on '%s' not supported",
         opr,
-        apex_type_str(node->value_type));
+        apex_type_get_name(node->value_type));
 }
 
 static void invalid_operation2(const char *opr, ApexAstNode *left, ApexAstNode *right) {
     apex_error_type(
         "invalid operation '%s' on '%s' and '%s'",
         opr,
-        apex_type_str(left->value_type),
-        apex_type_str(right->value_type));
+        apex_type_get_name(left->value_type),
+        apex_type_get_name(right->value_type));
 }
 
 static ApexType get_id_type(ApexAstNode *node) {
@@ -63,17 +64,17 @@ static void save_code(ApexCompiler *cmpl, const char *output) {
     FILE *file = fopen(output, "wb");
 
     if (!file) {
-        apex_error_throw(APEX_ERROR_CODE_IO, "could not open file: %s", strerror(errno));
+        apex_error_io("could not open file: %s", strerror(errno));
     }
 
     if (fwrite(&cmpl->code->n, sizeof(size_t), 1, file) == 0) {
         fclose(file);
-        apex_error_throw(APEX_ERROR_CODE_IO, "could not write to file: %s", strerror(errno));
+        apex_error_io("could not write to file: %s", strerror(errno));
     }
 
     if (fwrite(cmpl->code->bytes, cmpl->code->n, 1, file) == 0) {
         fclose(file);
-        apex_error_throw(APEX_ERROR_CODE_IO, "could not write to file: %s", strerror(errno));
+        apex_error_io("could not write to file: %s", strerror(errno));
     }
 
     fclose(file);
@@ -221,13 +222,18 @@ static void mul(ApexCompiler *cmpl, ApexAstNode *left, ApexAstNode *right) {
 }
 
 static void call(ApexCompiler *cmpl, ApexAstNode *left, ApexAstNode *right) {
-    handle_node(cmpl, right);
     handle_node(cmpl, left);
-
+    handle_node(cmpl, right);
     ADD_BYTE(cmpl, APEX_VM_OP_CALL);
-    if (right && right->node_type == APEX_AST_NODE_LIST) {
-        ADD_VALUE(int, cmpl, APEX_AST_NODE_LIST(right)->n);
+    
+    if (left && left->node_type == APEX_AST_NODE_LIST) {
+        ADD_VALUE(int, cmpl, APEX_AST_NODE_LIST(left)->n);
     }
+}
+
+static void import(ApexCompiler *cmpl, ApexAstNode *left) {
+    handle_node(cmpl, left);
+    ADD_BYTE(cmpl, APEX_VM_OP_IMPORT);
 }
 
 static void opr(ApexCompiler *cmpl, ApexAstNode *node) {
@@ -246,6 +252,10 @@ static void opr(ApexCompiler *cmpl, ApexAstNode *node) {
 
     case '/':
         div(cmpl, node->left, node->right);
+        break;
+
+    case APEX_AST_OPR_IMPORT:
+        import(cmpl, node->left);
         break;
 
     case APEX_AST_OPR_CALL:
@@ -300,6 +310,7 @@ static void handle_node(ApexCompiler *cmpl, ApexAstNode *node) {
         ApexAst *ast = APEX_AST_NODE_LIST(node);
         size_t i;
 
+        cmpl->size += ast->n;
         for (i = 0; i < ast->n; i++) {
             ApexAstNode *node = ast->nodes[i];
             handle_node(cmpl, node);
@@ -334,6 +345,7 @@ void apex_compiler_destroy(ApexCompiler *cmpl) {
 void apex_compiler_compile(ApexCompiler *cmpl, const char *output) {
     size_t i;
 
+    cmpl->size = cmpl->ast->n;
     for (i = 0; i < cmpl->ast->n;  i++) {
         ApexAstNode *node = cmpl->ast->nodes[i];
         handle_node(cmpl, node);

@@ -3,7 +3,7 @@
 #include <string.h>
 #include <errno.h>
 
-#include "value.h"
+#include <apex/value.h>
 #include "vm.h"
 #include "malloc.h"
 #include "error.h"
@@ -47,15 +47,15 @@ static void invalid_operation1(const char *opr, ApexValue *value) {
     apex_error_runtime(
         "operation '%s' on '%s' not supported",
         opr,
-        apex_type_str(value->type));
+        apex_type_get_name(value->type));
 }
 
 static void invalid_operation2(const char *opr, ApexValue *left, ApexValue *right) {
     apex_error_runtime(
         "invalid operation '%s' on '%s' and '%s'",
         opr,
-        apex_type_str(left->type),
-        apex_type_str(right->type));
+        apex_type_get_name(left->type),
+        apex_type_get_name(right->type));
 }
 
 ApexVm *apex_vm_new(ApexHashTable *table, const char *filename) {
@@ -252,7 +252,7 @@ static void load_ref(ApexVm *vm) {
         apex_error_reference("undefined identifier: %s", id);
     }
     type = APEX_TYPE_OF(value);
-
+    
     switch (type) {
     case APEX_TYPE_INT:
         APEX_VALUE_INT(vm->stack_top) = APEX_VALUE_INT(value);
@@ -286,9 +286,12 @@ static void call(ApexVm *vm) {
         break;
 
     default:
-        apex_error_reference("called object is not a function");
+        apex_error_reference(
+            "called object (%s) is not a function",
+            apex_type_get_name(APEX_TYPE_OF(top)));
+    
     }
-    vm->p++;
+    
 }
 
 static void import(ApexVm *vm) {
@@ -338,13 +341,21 @@ void apex_vm_dispatch(ApexVm *vm) {
             load_ref(vm);
             break;
 
-        case APEX_VM_OP_CALL:
+        case APEX_VM_OP_CALL:          
             call(vm);
             break;
 
-        case APEX_VM_OP_END:
+        case APEX_VM_OP_IMPORT:
+            import(vm);
+            break;
+
+        case APEX_VM_OP_END:          
             end = 1;
             break;
+
+         default:
+            apex_error_internal("invalid opcode: %d", *vm->p);
+            return;
         }
         if (vm->debug) {
             print_stack(vm);
@@ -397,9 +408,14 @@ void apex_vm_print(ApexVm *vm) {
             break;
 
         case APEX_VM_OP_CALL:
-            printf("[%d] call\n", APEX_VM_OP_CALL);
             vm->p++;
+            printf("[%d] call (%d)\n", APEX_VM_OP_CALL, *((int *)vm->p));
             vm->p += sizeof(int);
+            break;
+
+        case APEX_VM_OP_IMPORT:
+            vm->p++;
+            printf("[%d] import\n", APEX_VM_OP_IMPORT);
             break;
 
         case APEX_VM_OP_END:
@@ -407,7 +423,7 @@ void apex_vm_print(ApexVm *vm) {
             goto end;
 
         default:
-            apex_error_internal("invalid opcode %d", *vm->p);
+            apex_error_internal("invalid opcode: %d", *vm->p);
             break;
         }
     }

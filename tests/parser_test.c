@@ -33,6 +33,7 @@ static void print_node_data(ApexAstNode *node, char *type) {
         print_ast(APEX_AST_NODE_LIST(node));
         break;
 
+    
     case APEX_AST_NODE_OPR:
         switch (APEX_AST_NODE_OPR(node)) {
         case APEX_AST_OPR_GE:
@@ -56,6 +57,10 @@ static void print_node_data(ApexAstNode *node, char *type) {
 
         case APEX_AST_OPR_CALL:
             printf("call");
+            break;
+
+        case APEX_AST_OPR_IMPORT:
+            printf("import");
             break;
 
         default:

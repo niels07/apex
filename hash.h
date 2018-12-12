@@ -1,7 +1,7 @@
 #ifndef APEX_HASH_H
 #define APEX_HASH_H
 
-#include "value.h"
+#include <apex/value.h>
 
 typedef struct ApexHashTable ApexHashTable;
 

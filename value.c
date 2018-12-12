@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "value.h"
+#include <apex/value.h>
 
 static const char *TYPE_STR[] = {
     "int", "flt", "str", "obj", "func", "none"
@@ -10,11 +10,11 @@ void apex_value(ApexValue *value, int intval) {
     value->type = APEX_TYPE_INT;
 }
 
-const char *apex_type_str(ApexType type) {
+const char *apex_type_get_name(ApexType type) {
     return TYPE_STR[type];
 }
 
-void apex_value_to_string(ApexValue *value, char *str) {
+void apex_value_to_string(char *str, ApexValue *value) {
     switch (value->type) {
     case APEX_TYPE_INT:
         sprintf(str, "%d", APEX_VALUE_INT(value));
@@ -37,7 +37,7 @@ void apex_value_make_int(ApexValue *value, int intval) {
 
 void apex_value_make_func(ApexValue *value, ApexFunc *func) {
     APEX_VALUE_FUNC(value) = func;
-    value->type = APEX_TYPE_INT;
+    value->type = APEX_TYPE_FUNC;
 }
 
 

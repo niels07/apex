@@ -8,8 +8,9 @@
 
 static void lex(ApexLexer *lexer) {
     ApexToken tk;
+    const char *tkstr;
+
     do {
-        const char *tkstr;
         tk = apex_lexer_next_token(lexer);
         tkstr = apex_lexer_get_token_str(tk);
 

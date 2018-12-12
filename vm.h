@@ -19,6 +19,7 @@ typedef enum {
     APEX_VM_OP_MOD,
     APEX_VM_OP_AND,
     APEX_VM_OP_CALL,
+    APEX_VM_OP_IMPORT,
     APEX_VM_OP_END
 } ApexVmOp;
 

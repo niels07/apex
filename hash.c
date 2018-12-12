@@ -3,14 +3,13 @@
 #include <stdio.h>
 #include <dlfcn.h>
 
+#include <apex/value.h>
+#include <apex/api.h>
 #include "malloc.h"
-#include "value.h"
 #include "hash.h"
-#include "api.h"
 #include "error.h"
 
 #define MODULE_TABLE_SIZE 256
-
 
 typedef struct {
     char *str;
@@ -229,10 +228,12 @@ ApexHashTable *apex_hash_table_get_table(
 void apex_hash_table_import(ApexHashTable *table, const char *module_name) {
     char path[256];
     void *handle;
-    struct __ApexExport *export;
+    struct ApexApiExports *exports;
+    struct ApexApiMethods *methods;
     ApexHashTable *module;
     ApexValue value;
-    size_t i;
+    size_t i;       
+    extern void apex_api_init_methods(struct ApexApiMethods *);
 
     sprintf(path, "modules/lib%s.so", module_name);
      
@@ -240,7 +241,10 @@ void apex_hash_table_import(ApexHashTable *table, const char *module_name) {
     if (!handle) {
         apex_error_io("unable to load %s", path);
     }
-    export = dlsym(handle, "__apex_export");
+    exports = dlsym(handle, "apex_api_exports");
+    methods = dlsym(handle, "apex_api_methods");
+    apex_api_init_methods(methods);
+
     module = apex_hash_table_get_table(table, module_name);
 
     if (!module) {
@@ -248,17 +252,17 @@ void apex_hash_table_import(ApexHashTable *table, const char *module_name) {
         apex_hash_table_set_table(table, module_name, module);
     }
 
-    for (i = 0; export[i].name; i++) {
-        switch (export[i].type) {
-        case APEX_TYPE_INT:
-            APEX_VALUE_INT(&value) = export[i].intval;
+    for (i = 0; exports[i].name; i++) {
+        switch (exports[i].type) {
+        case APEX_TYPE_INT:       
+            apex_value_make_int(&value, exports[i].intval);    
             break;
 
-        case APEX_TYPE_FLT:
-            APEX_VALUE_FUNC(&value) = export[i].func;
-            break;
+        case APEX_TYPE_FUNC:       
+            apex_value_make_func(&value, exports[i].func);          
+            break;        
         }
-        apex_hash_table_set_value(table, export[i].name, &value);
+        apex_hash_table_set_value(table, exports[i].name, &value);        
     }
 }
 

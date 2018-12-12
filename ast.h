@@ -2,7 +2,7 @@
 #define APEX_AST_H
 
 #include <stddef.h>
-#include "value.h"
+#include <apex/value.h>
 
 typedef enum {
     APEX_AST_OPR_GE,

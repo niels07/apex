@@ -259,6 +259,7 @@ static void get_name(ApexLexer *lexer, TokenInfo *ti) {
         save_and_next_ch(lexer);
     }
     find_name_token(lexer, ti);
+    reset_buf(lexer);
 }
 
 static void next_token(ApexLexer *lexer, TokenInfo *ti) {
@@ -304,6 +305,7 @@ static void next_token(ApexLexer *lexer, TokenInfo *ti) {
         return;
 
     case '\0':
+    case EOF:
         set_tk(lexer, ti, APEX_TOKEN_EOS);
         return;
 
@@ -350,11 +352,12 @@ ApexLexer *apex_lexer_new(ApexStream *stream) {
 }
 
 ApexToken apex_lexer_next_token(ApexLexer *lexer) {
-    if (lexer->next.token == APEX_TOKEN_EOS) {
-        return APEX_TOKEN_EOS;
-    }
     lexer->cur = lexer->next;
-    next_token(lexer, &lexer->next);
+
+    if (lexer->next.token != APEX_TOKEN_EOS) {
+        next_token(lexer, &lexer->next);       
+    }
+   
     return lexer->cur.token;
 }
 
@@ -377,7 +380,7 @@ char *apex_lexer_get_str(ApexLexer *lexer) {
     return APEX_VALUE_STR(&lexer->cur.value);
 }
 
-ApexToken apex_lexer_get_token(ApexLexer *lexer) {
+ApexToken apex_lexer_get_token(ApexLexer *lexer) {  
     return lexer->cur.token;
 }
 

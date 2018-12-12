@@ -57,6 +57,15 @@ void apex_ast_list(ApexAst *ast, ApexAst *list) {
     apex_ast_push_node(ast, node);
 }
 
+void apex_ast_opr0(ApexAst *ast, ApexAstOpr opr) {
+    ApexAstNode *node = apex_ast_node_new();
+
+    node->node_type = APEX_AST_NODE_OPR;
+    node->value_type = APEX_TYPE_NONE;
+    node->data.opr = opr;
+    apex_ast_push_node(ast, node); 
+}
+
 void apex_ast_opr1(ApexAst *ast, ApexAstOpr opr, ApexAstNode *arg) {
     ApexAstNode *node = apex_ast_node_new();
 
