@@ -1,13 +1,8 @@
-#ifndef APEX_COMPILER_H
-#define APEX_COMPILER_H
+#ifndef ApexCompiler_H
+#define ApexCompiler_H
 
-#include "ast.h"
-#include "hash.h"
+#include "lexer.h"
 
-typedef struct ApexCompiler ApexCompiler;
-
-ApexCompiler *apex_compiler_new(ApexAst *, ApexHashTable *);
-
-extern void apex_compiler_compile(ApexCompiler *, const char *);
+extern void ApexCompiler_write(ApexLexer *, FILE *);
 
 #endif

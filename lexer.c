@@ -7,393 +7,557 @@
 #include "error.h"
 #include "malloc.h"
 #include "lexer.h"
-#include "io.h"
+#include "value.h"
 
 #define BUF_INIT_SIZE 256
 #define BUF_GROW_SIZE 128
 
-#define NEXT_CH(lexer) ((lexer)->c = apex_stream_getch((lexer)->stream))
-
-typedef struct tokenInfo {
-    ApexValue value;
-    ApexToken token; 
-    int lineno;
-} TokenInfo;
-
-struct ApexLexer {
-    TokenInfo cur;
-    TokenInfo next;
-    int lineno;
-    ApexStream *stream;
-    char c;
-    struct {
-        size_t len;
-        size_t size;
-        char *str;
-    } buf;
+enum {
+    KEYWORD_IF = 0,
+    KEYWORD_ELSE,
+    KEYWORD_FUNCTION,
+    KEYWORD_IMPORT,
+    KEYWORD_INT,
+    KEYWORD_FLT,
+    KEYWORD_BOOL,
+    KEYWORD_TRUE,
+    KEYWORD_FALSE,
+    KEYWORD_STR,
+    KEYWORD_VOID,
+    KEYWORD_RETURN,
+    KEYWORD_END
 };
 
-static const char *KEYWORDS[] = {
-    "module", "import",
-    "if","else", "elif", "while",
-    "int", "flt", "str", "end", NULL
+const char *KeyWords[] = {
+    "if",
+    "else",
+    "function",
+    "import",
+    "int",
+    "float",
+    "bool",
+    "true",
+    "false",
+    "str",
+    "void",
+    "return",
+    "end"
 };
 
-static const int KEYWORD_TOKENS[] = {
-    APEX_TOKEN_MODULE,
-    APEX_TOKEN_IMPORT,
-    APEX_TOKEN_IF, 
-    APEX_TOKEN_ELSE, 
-    APEX_TOKEN_ELIF, 
-    APEX_TOKEN_WHILE,
-    APEX_TOKEN_DECL_INT,
-    APEX_TOKEN_DECL_FLT,
-    APEX_TOKEN_DECL_STR,
-    APEX_TOKEN_END,
-};
+#define ALPHABET_SIZE 26
+#define APEX_BUF_SIZE 256
 
-static const char *TOKEN_STR[] = {
-    "integer", "float", "string", "identifier",
-    "++", "--", 
-    "==", "!=", "<=", ">=",
-    "&&", "||",
-    "<<", ">>",
-    "+=", "-=", "*=", "/=", "%=", 
-    ">>=", "<<=", "&=", "^=", "|=",
-    "if", "else", "elif", "while",
-    "int", "flt", "str",
-    "module", "import",
-    "end",
-    "end of statement",
-    "end of stream"
-};
+#define STR_VAL(lexer) lexer->cur.value.data.str_val
+#define INT_VAL(lexer) lexer->cur.value.data.int_val
+#define FLT_VAL(lexer) lexer->cur.value.data.flt_val
+#define FUNC_VAL(lexer) lexer->cur.value.data.func_val
+#define BOOL_VAL(lexer) lexer->cur.value.data.bool_val
+
+static void next_token(ApexLexer *lexer);
+
+static ApexLexer_trie_node *create_trie_node() {
+    int i;
+    ApexLexer_trie_node *node = APEX_NEW(ApexLexer_trie_node);
+    for (i = 0; i < ALPHABET_SIZE; i++) {
+        node->children[i] = NULL;
+    }
+    return node;
+}
+
+static void insert_word(ApexLexer_trie_node *root, const char *word, int keyword_index) {
+    ApexLexer_trie_node *node = root;
+    while (*word) {
+        int index = *word - 'a'; /* Get the index for the current character */
+        if (!node->children[index]) { /* If the node has not yet been initialized */
+            node->children[index] = create_trie_node(); /* Initialize the node with a new trie node */
+        }
+        node->keyword_index = keyword_index;
+        node = node->children[index];
+        word++;
+    }
+}
+
+static void destroy_trie(ApexLexer_trie_node *root) {
+    int i;
+    if (root) {
+        for (i = 0; i < ALPHABET_SIZE; i++) {
+            destroy_trie(root->children[i]);
+        }
+        apex_free(root);
+    }
+}
+
+static int search_keyword(ApexLexer_trie_node *root, const char *word) {
+    ApexLexer_trie_node *node = root;
+    while (*word) {
+        int index = *word - 'a';
+        if (!node->children[index]) {
+            return -1; /* Not a keyword */
+        }
+        node = node->children[index];
+        word++;
+    }
+    /* Check if the node represents a keyword */
+    return node->keyword_index >= 0 ? node->keyword_index : -1;
+}
+
+static ApexLexer_trie_node *create_trie_root() {
+    ApexLexer_trie_node *root = create_trie_node();
+
+    /* Insert all keywords */
+    insert_word(root, "if", KEYWORD_IF);
+    insert_word(root, "else", KEYWORD_ELSE);
+    insert_word(root, "function", KEYWORD_FUNCTION);
+    insert_word(root, "import", KEYWORD_IMPORT);
+    insert_word(root, "int", KEYWORD_INT);
+    insert_word(root, "float", KEYWORD_FLT);
+    insert_word(root, "bool", KEYWORD_BOOL);
+    insert_word(root, "true", KEYWORD_TRUE);
+    insert_word(root, "false", KEYWORD_FALSE);
+    insert_word(root, "string", KEYWORD_STR);
+    insert_word(root, "void", KEYWORD_VOID);
+    insert_word(root, "return", KEYWORD_RETURN);
+    insert_word(root, "end", KEYWORD_END);
+    return root;
+}
 
 static void reset_buf(ApexLexer *lexer) {
     lexer->buf.len = 0;
-    lexer->buf.size = BUF_INIT_SIZE;
-    lexer->buf.str = apex_malloc(BUF_INIT_SIZE);
 }
 
 static void check_buf_size(ApexLexer *lexer) {
-    if (lexer->buf.len == lexer->buf.size) {
+    if (lexer->buf.len >= lexer->buf.size) {
         lexer->buf.size += BUF_GROW_SIZE;
         lexer->buf.str = apex_realloc(lexer->buf.str, lexer->buf.size);
     }
 }
 
-static void set_tk(ApexLexer *lexer, TokenInfo *ti, ApexToken tk) {
-    ti->token = tk; 
-    ti->lineno = lexer->lineno;
+static void set_token(ApexLexer *lexer, ApexLexer_token tk) {
+    LEXER_TOKEN_INFO(lexer).token = tk;
+    LEXER_TOKEN_INFO(lexer).lineno = lexer->lineno;
 }
 
 static char *finish_buf(ApexLexer *lexer) {
     char *buf = lexer->buf.str;
 
     buf[lexer->buf.len] = '\0';
-    reset_buf(lexer);
-    return buf;
+    reset_buf(lexer); /* Restart a new buffer */
+    return buf; /* Return the final result of the buffer. */
 }
 
-static void save_ch(ApexLexer *lexer) {
-    lexer->buf.str[lexer->buf.len++] = lexer->c;
-    check_buf_size(lexer);
+static void next_ch(ApexLexer *lexer) {
+    lexer->c = getc(lexer->file);
 }
 
 static void save_and_next_ch(ApexLexer *lexer) {
-    lexer->buf.str[lexer->buf.len++] = lexer->c;
     check_buf_size(lexer);
-    NEXT_CH(lexer);
-} 
-
-static void get_eq(ApexLexer *lexer, TokenInfo *ti) {
-    NEXT_CH(lexer);
-    switch (lexer->c) {
-    case '=':
-        NEXT_CH(lexer);
-        set_tk(lexer, ti, APEX_TOKEN_EQ);
-        break;
-
-    default:
-        set_tk(lexer, ti, '=');
-        break;
-    }   
+    lexer->buf.str[lexer->buf.len++] = lexer->c;
+    next_ch(lexer);
 }
 
-static void get_add(ApexLexer *lexer, TokenInfo *ti) {
-    NEXT_CH(lexer);
+static void get_eq(ApexLexer *lexer) {
+    next_ch(lexer);
+    if (lexer->c == '=') {
+        next_ch(lexer);
+        set_token(lexer, APEX_LEXER_TOKEN_EQUALS);
+    } else {
+        set_token(lexer, '=');
+    }
+    next_ch(lexer);
+}
+
+static void get_add(ApexLexer *lexer) {
+    next_ch(lexer);
     switch (lexer->c) {
-    case '+':
-        NEXT_CH(lexer);
-        set_tk(lexer, ti, APEX_TOKEN_INC);
-        break;
+        case '+': /* Token is ++ so we add the increment token */
+            next_ch(lexer);
+            set_token(lexer, APEX_LEXER_TOKEN_INC);
+            break;
 
-    case '=':
-        NEXT_CH(lexer);
-        set_tk(lexer, ti, APEX_TOKEN_ASGN_ADD);
-        break;
+        case '=': /* Token is += so we add the assign and add token */
+            next_ch(lexer);
+            set_token(lexer, APEX_LEXER_TOKEN_ASGN_ADD);
+            break;
 
-    default:
-        set_tk(lexer, ti, '+');
-        break;
+        default:
+            set_token(lexer, '+');
+            break;
     }
 }
 
-static void get_sub(ApexLexer *lexer, TokenInfo *ti) {
-    NEXT_CH(lexer);
+static void get_sub(ApexLexer *lexer) {
+    next_ch(lexer);
     switch (lexer->c) {
-    case '-':
-        NEXT_CH(lexer);
-        set_tk(lexer, ti, APEX_TOKEN_DEC);
-        break;
+        case '-': /* Token is -- so we add the decrement token */
+            next_ch(lexer);
+            set_token(lexer, APEX_LEXER_TOKEN_DEC);
+            break;
 
-    case '=':
-        NEXT_CH(lexer);
-        set_tk(lexer, ti, APEX_TOKEN_ASGN_SUB);
-        break;
+        case '=': /* Token is -= so we add the assign subtract token */
+            next_ch(lexer);
+            set_token(lexer, APEX_LEXER_TOKEN_ASGN_SUB);
+            break;
 
-    default:
-        set_tk(lexer, ti, '-');
-        break;
+        default:
+            set_token(lexer, '-');
+            break;
     }
 }
 
-static void get_mul(ApexLexer *lexer, TokenInfo *ti) {
-    NEXT_CH(lexer);
+static void get_mul(ApexLexer *lexer) {
+    next_ch(lexer);
     switch (lexer->c) {
-    case '=':
-        NEXT_CH(lexer);
-        set_tk(lexer, ti, APEX_TOKEN_ASGN_MUL);
-        break;
+        case '=':
+            next_ch(lexer);
+            set_token(lexer, APEX_LEXER_TOKEN_ASGN_MUL);
+            break;
 
-    default:
-        set_tk(lexer, ti, '*');
-        break;
+        default:
+            set_token(lexer, '*');
+            break;
     }
 }
 
-static void get_div(ApexLexer *lexer, TokenInfo *ti) {
-    NEXT_CH(lexer);
+static void get_div(ApexLexer *lexer) {
+    next_ch(lexer);
     switch (lexer->c) {
-    case '=':
-        NEXT_CH(lexer);
-        set_tk(lexer, ti, APEX_TOKEN_ASGN_DIV);
-        break;
+        case '=':
+            next_ch(lexer);
+            set_token(lexer, APEX_LEXER_TOKEN_ASGN_DIV);
+            break;
 
-    default:
-        set_tk(lexer, ti, '/');
-        break;
+        default:
+            set_token(lexer, '/');
+            break;
     }
 }
 
-static void get_not(ApexLexer *lexer, TokenInfo *ti) {
-    NEXT_CH(lexer);
+static void get_not(ApexLexer *lexer) {
+    next_ch(lexer);
     switch (lexer->c) {
-    case '=':
-        NEXT_CH(lexer);
-        set_tk(lexer, ti, APEX_TOKEN_NE);
-        break;
+        case '=':
+            next_ch(lexer);
+            set_token(lexer, APEX_LEXER_TOKEN_NOT_EQUAL);
+            break;
 
-    default:
-        set_tk(lexer, ti, '!');
-        break;
+        default:
+            set_token(lexer, '!');
+            break;
     }
 }
 
-static void get_number(ApexLexer *lexer, TokenInfo *ti) {
+static void get_number(ApexLexer *lexer) {
     char *number;
 
-    set_tk(lexer, ti, APEX_TOKEN_INT);
+    set_token(lexer, APEX_LEXER_TOKEN_INT); /* Assume int until found otherwise */
     for (;;) {
-        if (lexer->c == '.' 
-        && ti->token == APEX_TOKEN_FLT) {
-            set_tk(lexer, ti, APEX_TOKEN_FLT);
-            save_and_next_ch(lexer); 
+        if (lexer->c == '.' && LEXER_TOKEN_INFO(lexer).token != APEX_LEXER_TOKEN_FLT) {
+            /* '.' found in number so it's a float */ 
+            set_token(lexer, APEX_LEXER_TOKEN_FLT);
+            save_and_next_ch(lexer);
         } else if (isdigit(lexer->c)) {
-            save_and_next_ch(lexer); 
+            save_and_next_ch(lexer);
         } else {
             break;
         }
     }
     number = finish_buf(lexer);
 
-    if (ti->token == APEX_TOKEN_INT) {
-        APEX_VALUE_INT(&ti->value) = atoi(number);
+    if (LEXER_TOKEN_INFO(lexer).token == APEX_LEXER_TOKEN_INT) {
+        LEXER_TOKEN_INFO_INT(lexer) = atoi(number);
     } else {
-        APEX_VALUE_FLT(&ti->value) = atof(number);
+        LEXER_TOKEN_INFO_FLT(lexer) = atof(number);
     }
+    next_ch(lexer);
 }
 
-static void get_str(ApexLexer *lexer, TokenInfo *ti) {
-    char prev = 0;
-
-    for (;;) {
-        NEXT_CH(lexer);
-        if (lexer->c == '"') {
-            if (prev != '\\') {
-                NEXT_CH(lexer);
-                break;
-            }
-        }
-        prev = lexer->c;
-        save_ch(lexer);
+static void get_str(ApexLexer *lexer) {
+    next_ch(lexer); /* Skip the opening quote */
+    while (lexer->c != '"' && lexer->c != EOF && lexer->c != '\n') {
+        save_and_next_ch(lexer); 
+        if (lexer->c == '\\') {
+            save_and_next_ch(lexer); /* Include the escaped character */
+        } 
     }
-    APEX_VALUE_STR(&ti->value) = finish_buf(lexer);
-    set_tk(lexer, ti, APEX_TOKEN_STR);
+    if (lexer->c == '\n' || lexer->c == EOF) { /* Closing quote must be on the same line*/
+        ApexError_syntax("incomplete string");
+        return;
+    }
+    next_ch(lexer); /* Skip the closing quote */
+    LEXER_TOKEN_INFO_STR(lexer) = finish_buf(lexer);
+    set_token(lexer, APEX_LEXER_TOKEN_STR);
+    next_ch(lexer);
 }
 
-static void find_name_token(ApexLexer *lexer, TokenInfo *ti) {
-    size_t i;
-    
-    for (i = 0; KEYWORDS[i]; i++) { 
-        if (strncmp(KEYWORDS[i], lexer->buf.str, lexer->buf.len) == 0) {
-            set_tk(lexer, ti, KEYWORD_TOKENS[i]);
-            return;
-        }
+static ApexLexer_token get_keyword_index_token(int keyword_index) {
+    /* Get the associated token for each keyword */ 
+    switch (keyword_index) {
+    case KEYWORD_IF:
+        return APEX_LEXER_TOKEN_IF;
+
+    case KEYWORD_ELSE:
+        return APEX_LEXER_TOKEN_ELSE;
+
+    case KEYWORD_FUNCTION:
+        return APEX_LEXER_TOKEN_DECL_FUNC;
+
+    case KEYWORD_IMPORT:
+        return APEX_LEXER_TOKEN_IMPORT;
+
+    case KEYWORD_INT:
+        return APEX_LEXER_TOKEN_DECL_INT;
+
+    case KEYWORD_FLT:
+        return APEX_LEXER_TOKEN_DECL_FLT;
+
+    case KEYWORD_BOOL:
+        return APEX_LEXER_TOKEN_DECL_BOOL;
+
+    case KEYWORD_STR:
+        return APEX_LEXER_TOKEN_DECL_STR;
+
+    case KEYWORD_TRUE: 
+        return APEX_LEXER_TOKEN_TRUE;
+
+    case KEYWORD_FALSE:
+        return APEX_LEXER_TOKEN_FALSE;
+
+    case KEYWORD_VOID:
+        return APEX_LEXER_TOKEN_VOID;
+
+    case KEYWORD_RETURN:
+        return APEX_LEXER_TOKEN_RETURN;
+
+    case KEYWORD_END:
+        return APEX_LEXER_TOKEN_END;
     }
-    APEX_VALUE_STR(&ti->value) = finish_buf(lexer);
-    set_tk(lexer, ti, APEX_TOKEN_ID);
+    ApexError_syntax("No index for keyword %d", keyword_index);
+    return keyword_index;
 }
 
-static void get_name(ApexLexer *lexer, TokenInfo *ti) {
-    while (lexer->c == '_' || isalnum(lexer->c)) {
+static void get_name_or_keyword(ApexLexer *lexer) {
+    char *name;
+    int keyword_index;
+    while (isalnum(lexer->c) || lexer->c == '_') { 
+        /* A name can only consist out of alphanumeric characters or a '_' */
         save_and_next_ch(lexer);
     }
-    find_name_token(lexer, ti);
+    name = finish_buf(lexer); 
+    keyword_index = search_keyword(lexer->trie_root, name); /* Search whether the string is a keyword */
+    if (keyword_index != -1) {
+        keyword_index = get_keyword_index_token(keyword_index);
+        set_token(lexer, keyword_index); /* Token is a keyword */
+    } else {
+        set_token(lexer, APEX_LEXER_TOKEN_ID); /* keyword is not a token so it must be an identifier */
+    }
+    LEXER_TOKEN_INFO_STR(lexer) = name;
     reset_buf(lexer);
+    next_ch(lexer);
 }
 
-static void next_token(ApexLexer *lexer, TokenInfo *ti) {
-    char c = lexer->c;
-    switch (c) {
-    case '=':
-        get_eq(lexer, ti);
-        return; 
-
-    case '+':
-        get_add(lexer, ti);
-        return; 
-
-    case '-':
-        get_sub(lexer, ti);
-        return;
-
-    case '*':
-        get_mul(lexer, ti);
-        return;
-
-    case '/':
-        get_div(lexer, ti);
-        return;
-
-    case '"':
-        get_str(lexer, ti);
-        return;
-
-    case '\n': 
-        do {
-            NEXT_CH(lexer);
-            lexer->lineno++;
-        } while (lexer->c == '\n');
-        set_tk(lexer, ti, APEX_TOKEN_END_STMT);
-        return;
-
-    case '(':
-    case ')':
-    case ':':
-        NEXT_CH(lexer);
-        set_tk(lexer, ti, c);
-        return;
-
-    case '\0':
-    case EOF:
-        set_tk(lexer, ti, APEX_TOKEN_EOS);
-        return;
-
-    case '!':
-        get_not(lexer, ti);
-        return;
-
-    case '\t':
-    case ' ':
-        NEXT_CH(lexer);
-        next_token(lexer, ti);
-        return;
-
-    default:
-        break;
+static void init_next_token_info(ApexLexer *lexer) {
+    if (lexer->c == EOF) {
+        set_token(lexer, APEX_LEXER_TOKEN_EOF);
+    } else {
+        next_token(lexer);
     }
+}
 
-    if (isdigit(lexer->c)) {
-        get_number(lexer, ti);
-        return;
-    }
-
-    if (lexer->c == '_' || isalpha(lexer->c)) {
-        get_name(lexer, ti);
-        return;
-    }
-
-    apex_error_throw(
-        APEX_ERROR_CODE_SYNTAX,
-        "unexpected character '%c' on line %d",
+static void unexp(ApexLexer *lexer) {
+    ApexError_syntax(
+        "Unexpected character '%c' on line %d",
         lexer->c,
         lexer->lineno);
 }
 
-ApexLexer *apex_lexer_new(ApexStream *stream) {
-    ApexLexer *lexer = APEX_NEW(ApexLexer); 
+static void clear_spaces(ApexLexer *lexer) {
+    char c = lexer->c;
+
+    /* Ignore all space characters until another character is found */
+    while (isspace(c)) {
+        if (c == '\n') {
+            lexer->lineno++;
+            printf("1. lineno++\n");
+        }
+        next_ch(lexer); 
+        c = lexer->c;
+    }
+}
+
+static void next_token(ApexLexer *lexer) {
+    char c = lexer->c;
+
+    clear_spaces(lexer);
+
+    if (isdigit(c)) {
+        get_number(lexer);
+        return;
+    }
+    
+    if (isalpha(c)) { /* First character must always be an alphabetic character to be a name or keyword */
+        get_name_or_keyword(lexer);
+        return;
+    }
+
+    switch (c) {
+    case '=':
+        get_eq(lexer);
+        break;
+
+    case '+':
+        get_add(lexer);
+        break;
+
+    case '-':
+        get_sub(lexer);
+        break;
+
+    case '*':
+        get_mul(lexer);
+        break;
+
+    case '/':
+        get_div(lexer);
+        break;
+
+    case '"':
+        get_str(lexer);
+        break;
+
+    case '(':
+    case ')':
+    case ':':
+        next_ch(lexer);
+        set_token(lexer, c);
+        break;
+
+    case '<':
+        next_ch(lexer);
+        if (lexer->c == '=') { /* Token is <= */
+        next_ch(lexer);
+        set_token(lexer, APEX_LEXER_TOKEN_LESS_EQUAL); 
+    } else {
+        set_token(lexer, APEX_LEXER_TOKEN_LESS);
+    }
+    break;
+
+    case '>':
+        next_ch(lexer);
+        if (lexer->c == '=') { /* Token is >= */
+            next_ch(lexer);
+            set_token(lexer, APEX_LEXER_TOKEN_GREATER_EQUAL);
+        } else {
+            set_token(lexer, APEX_LEXER_TOKEN_GREATER);
+        }
+        break;
+
+    case '&':
+        next_ch(lexer);
+        if (lexer->c != '&') { /* Token must be && */
+            unexp(lexer);
+            return;
+        }
+        next_ch(lexer);
+        set_token(lexer, APEX_LEXER_TOKEN_AND);
+        break;
+
+
+    case '|':
+        next_ch(lexer);
+        if (lexer->c != '|') { /* Token must be || */
+            unexp(lexer);
+            return;
+        }
+        next_ch(lexer);
+        set_token(lexer, APEX_LEXER_TOKEN_OR);
+        break;
+    case '\n':
+        do {
+            lexer->lineno++;
+            printf("2. lineno++\n");
+            next_ch(lexer);
+        } while (lexer->c == '\n'); /* Skip consecutive newlines */
+        set_token(lexer, APEX_LEXER_TOKEN_END_STMT);
+        return;
+
+    case '\0':
+        set_token(lexer, APEX_LEXER_TOKEN_NULL_TERM);
+        break;
+
+    case EOF:
+        set_token(lexer, APEX_LEXER_TOKEN_EOF);
+        break;
+
+    case '!':
+        get_not(lexer);
+        break;
+
+    default:
+        unexp(lexer);
+    }
+}
+
+ApexLexer *ApexLexer_new(FILE *file) {
+    ApexLexer *lexer = APEX_NEW(ApexLexer);
 
     lexer->lineno = 1;
-    lexer->stream = stream;
+    lexer->file = file;
+    lexer->trie_root = create_trie_root();
+    lexer->buf.str = apex_malloc(APEX_BUF_SIZE);
+    lexer->buf.size = APEX_BUF_SIZE;
+    lexer->buf.len = 0;
+
     reset_buf(lexer);
-    NEXT_CH(lexer);
-    next_token(lexer, &lexer->next);
+    lexer->c = getc(lexer->file);
+    init_next_token_info(lexer);
     return lexer;
 }
 
-ApexToken apex_lexer_next_token(ApexLexer *lexer) {
+void ApexLexer_free(ApexLexer *lexer) {
+    if (lexer) {
+        destroy_trie(lexer->trie_root);
+        apex_free(lexer->buf.str);
+        apex_free(lexer);
+    }
+}
+
+ApexLexer_token ApexLexer_next_token(ApexLexer *lexer) {
     lexer->cur = lexer->next;
 
-    if (lexer->next.token != APEX_TOKEN_EOS) {
-        next_token(lexer, &lexer->next);       
+    if (lexer->cur.token != APEX_LEXER_TOKEN_NULL_TERM) {
+        next_token(lexer);
     }
-   
     return lexer->cur.token;
 }
 
-const char *apex_lexer_get_token_str(ApexToken tk) {
-    static char single_char_token[1];
-    char *p;
-
-    for (p = "()+-*/%?:!"; *p; p++) {
-        if (tk != *p) {
-            continue;
-        }
-        single_char_token[0] = *p;
-        single_char_token[1] = '\0';
-        return single_char_token; 
-    }
-    return TOKEN_STR[tk - 257];
+char *ApexLexer_get_str(ApexLexer *lexer) {
+    return STR_VAL(lexer);
 }
 
-char *apex_lexer_get_str(ApexLexer *lexer) {
-    return APEX_VALUE_STR(&lexer->cur.value);
+int ApexLexer_get_int(ApexLexer *lexer) {
+    return INT_VAL(lexer);
 }
 
-ApexToken apex_lexer_get_token(ApexLexer *lexer) {  
+float ApexLexer_get_flt(ApexLexer *lexer) {
+    return FLT_VAL(lexer);
+}
+
+bool ApexLexer_get_bool(ApexLexer *lexer) {
+    return BOOL_VAL(lexer);
+}
+
+ApexLexer_token ApexLexer_get_token(ApexLexer *lexer) {
     return lexer->cur.token;
 }
 
-ApexToken apex_lexer_peek(ApexLexer *lexer) {
+ApexLexer_token ApexLexer_peek(ApexLexer *lexer) {
     return lexer->next.token;
 }
 
-int apex_lexer_get_lineno(ApexLexer *lexer) {
+int ApexLexer_get_lineno(ApexLexer *lexer) {
     return lexer->cur.lineno;
 }
 
-ApexValue *apex_lexer_get_value(ApexLexer *lexer) {
+ApexValue *ApexLexer_get_value(ApexLexer *lexer) {
     return &lexer->cur.value;
 }
-
-

@@ -1,21 +1,20 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "value.h"
+#include "hash.h"
 #include "vm.h"
-#include <apex/api.h>
+#include "error.h"
+#include "malloc.h"
+#include "api.h"
 
-static ApexVm *api_vm;
-
-static ApexValue *apex_api_pop(void) {
-    return apex_vm_pop(api_vm);    
+void ApexApi_register(ApexVm *vm, const char *name, ApexApi_function func) {
+    ApexApi_entry *entry;
+    if (vm->api_entry_count >= MAX_API_ENTRIES) {
+        ApexError_out_of_bounds("Max API functions reached");
+    }
+    entry = &vm->api_entries[vm->api_entry_count++];
+    strncpy(entry->name, name, sizeof(entry->name));
+    entry->func = func;
 }
 
-static ApexValue *apex_api_top(void) {
-    return apex_vm_top(api_vm);
-}
-
-void apex_api_init(ApexVm *vm) {
-    api_vm = vm;
-}
-
-void apex_api_init_methods(struct ApexApiMethods *methods) {
-    methods->pop = apex_api_pop;
-    methods->top = apex_api_top;    
-}

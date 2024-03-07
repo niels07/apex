@@ -2,13 +2,14 @@ PWD:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 CC=gcc
 CFLAGS=-g -std=c89 -pedantic -I$(PWD) -I$(PWD)/include -Wall -Wno-switch 
 LDFLAGS=-lm -ldl -lapex -L.
-OBJ=error.o malloc.o lexer.o parser.o io.o compiler.o strings.o vm.o ast.o value.o hash.o api.o
-BIN=apex
+OBJ=hash.o error.o malloc.o lexer.o parser.o vm.o value.o compiler.o api.o  
 LIB=libapex.a
-TESTS=lexer_test parser_test
+BIN=apex
+TESTS=tests/lexer_test
 
 all: $(OBJ) main.o
-	ar rcu $(LIB) $(OBJ)
+	$(MAKE) modules/Makefile
+	ar rcD $(LIB) $(OBJ)
 	ranlib $(LIB)
 	$(CC) -o $(BIN) main.o $(LDFLAGS) 
 
@@ -36,13 +37,7 @@ compiler.o: compiler.c compiler.h
 vm.o: vm.c vm.h
 	$(CC) $(CFLAGS) -c vm.c
 
-strings.o: strings.c strings.h
-	$(CC) $(CFLAGS) -c strings.c
-
-ast.o: ast.c ast.h
-	$(CC) $(CFLAGS) -c ast.c
-
-value.o: value.c include/apex/value.h
+value.o: value.c value.h
 	$(CC) $(CFLAGS) -c value.c
 
 hash.o: hash.c hash.h
@@ -53,27 +48,21 @@ api.o: api.c
 
 tests: $(TESTS)
 
-lexer_test: $(OBJ) tests/lexer_test.o
-	$(CC) $(LDFLAGS) $(OBJ) tests/lexer_test.o -o lexer_test
+tests/lexer_test: $(OBJ) tests/lexer_test.o
+	$(CC) -o tests/lexer_test $(OBJ) tests/lexer_test.o 
 
 tests/lexer_test.o: tests/lexer_test.c
 	$(CC) $(CFLAGS) -c tests/lexer_test.c -o tests/lexer_test.o
 
-parser_test: $(OBJ) tests/parser_test.o
-	$(CC) $(LDFLAGS) $(OBJ) tests/parser_test.o -o parser_test
-
-tests/parser_test.o: tests/parser_test.c
-	$(CC) $(CFLAGS) -c tests/parser_test.c -o tests/parser_test.o
-
 install:
 	mkdir -p /usr/include/apex
 	mkdir -p /usr/lib/apex	
-	cp -R $(PWD)/include/* /usr/include
+	cp apex.h /usr/include/apex
+	cp value.h /user/include/apex
 	cp $(BIN) /usr/bin
 	cp $(LIB) /usr/lib/apex
 
 clean:
 	rm -f ./*.o $(BIN) $(LIB)
-	rm -f $(TESTS)
-
+	rm -f tests/*.o $(TESTS)
 

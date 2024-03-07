@@ -4,7 +4,7 @@
 typedef enum {
     APEX_TYPE_INT,
     APEX_TYPE_FLT,
-    APEX_TYPE_STR,
+    APEX_TYPE_BOOL,
     APEX_TYPE_OBJ,
     APEX_TYPE_FUNC,
     APEX_TYPE_NONE
@@ -35,4 +35,3 @@ extern const char *apex_type_get_name(ApexType);
 #define APEX_TYPE_OF(value) ((value)->type)
 
 #endif
-

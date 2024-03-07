@@ -1,43 +1,43 @@
 #include <stdio.h>
-#include <apex/value.h>
+#include <stdlib.h>
+#include "malloc.h"
+#include "value.h"
 
-static const char *TYPE_STR[] = {
-    "int", "flt", "str", "obj", "func", "none"
+const char *TYPE_STRING[] = {
+    "int", "bool", "float", "string", "function"
 };
 
-void apex_value(ApexValue *value, int intval) {
-    value->data.intval = intval;
-    value->type = APEX_TYPE_INT;
+void ApexValue_to_int(ApexValue *value, int intval) {
+    value->data.int_val = intval;
+    value->type = APEX_VALUE_TYPE_INT;
 }
 
-const char *apex_type_get_name(ApexType type) {
-    return TYPE_STR[type];
-}
-
-void apex_value_to_string(char *str, ApexValue *value) {
+void ApexValue_to_string(char *str, ApexValue *value) {
     switch (value->type) {
-    case APEX_TYPE_INT:
-        sprintf(str, "%d", APEX_VALUE_INT(value));
+    case APEX_VALUE_TYPE_INT:
+        sprintf(str, "%d", value->data.int_val);
         break; 
 
-    case APEX_TYPE_FLT:
-        sprintf(str, "%f", APEX_VALUE_FLT(value));
+    case APEX_VALUE_TYPE_FLT:
+        sprintf(str, "%f", value->data.flt_val);
         break;
 
-    case APEX_TYPE_STR:
-        sprintf(str, "%s", APEX_VALUE_STR(value));
+    case APEX_VALUE_TYPE_STR:
+        sprintf(str, "%s", value->data.str_val);
         break;
     }
 }
 
-void apex_value_make_int(ApexValue *value, int intval) {
-    APEX_VALUE_INT(value) = intval;
-    value->type = APEX_TYPE_INT;
+const char *ApexValue_get_type_name(ApexValue_type type) {
+    return TYPE_STRING[type];
 }
 
-void apex_value_make_func(ApexValue *value, ApexFunc *func) {
-    APEX_VALUE_FUNC(value) = func;
-    value->type = APEX_TYPE_FUNC;
+void ApexValue_make_int(ApexValue *value, int intval) {
+    value->data.int_val = intval;
+    value->type = APEX_VALUE_TYPE_INT;
 }
 
-
+void ApexValue_make_string(ApexValue *value, const char *str) {
+    value->data.str_val = dupstr(str);
+    value->type = APEX_VALUE_TYPE_STR;
+}

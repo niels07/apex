@@ -8,19 +8,20 @@
 struct ApexErrorHandler {
     ApexErrorCallback *callback;
     void *data;
-    char message[APEX_ERROR_MAX];
+    char message[ApexError_MAX];
     ApexErrorCode error_code;
 };
 
 static const char *ERROR_MESSAGES[] = {
     "internal",
     "IO",
-    "out of memory",
+    "memory allocation",
     "syntax",
     "type",
     "runtime",
     "argument",
-    "reference"
+    "compiler",
+    "out of bounds"
 };
 
 static ApexErrorHandler handlers[64];
@@ -34,7 +35,7 @@ static void init_handlers(void) {
     initialized = 1;
 }
 
-void apex_error_set_handler(ApexErrorCode error_code, ApexErrorCallback *callback, void *data) {
+void ApexError_set_handler(ApexErrorCode error_code, ApexErrorCallback *callback, void *data) {
     ApexErrorHandler *handler;
 
     init_handlers();
@@ -43,13 +44,13 @@ void apex_error_set_handler(ApexErrorCode error_code, ApexErrorCallback *callbac
     handler->data = data;
 }
 
-void apex_error_print(ApexErrorHandler *handler) {
+void ApexError_print(ApexErrorHandler *handler) {
     const char *errdesc = ERROR_MESSAGES[handler->error_code];
 
     fprintf(stderr, "apex: %s error: %s\n", errdesc, handler->message);
 }
 
-void apex_error_vthrow(ApexErrorCode error_code, const char *fmt, va_list vl) {
+void ApexError_vthrow(ApexErrorCode error_code, const char *fmt, va_list vl) {
     ApexErrorHandler *handler;
 
     init_handlers();
@@ -69,42 +70,49 @@ void apex_error_vthrow(ApexErrorCode error_code, const char *fmt, va_list vl) {
 #define throw_error(error_code, fmt) do {   \
     va_list vl;                             \
     va_start(vl, fmt);                      \
-    apex_error_vthrow(error_code, fmt, vl); \
+    ApexError_vthrow(error_code, fmt, vl); \
 } while (0)
 
-void apex_error_throw(ApexErrorCode error_code, const char *fmt, ...) {
+void ApexError_throw(ApexErrorCode error_code, const char *fmt, ...) {
     throw_error(error_code, fmt);
 }
 
-void apex_error_io(const char *fmt, ...) {
+void ApexError_io(const char *fmt, ...) {
     throw_error(APEX_ERROR_CODE_IO, fmt);
 }
 
-void apex_error_internal(const char *fmt, ...) {
+void ApexError_internal(const char *fmt, ...) {
     throw_error(APEX_ERROR_CODE_INTERNAL, fmt);
 }
 
-void apex_error_runtime(const char *fmt, ...) {
+void ApexError_runtime(const char *fmt, ...) {
     throw_error(APEX_ERROR_CODE_RUNTIME, fmt);
 }
 
-void apex_error_syntax(const char *fmt, ...) {
+void ApexError_syntax(const char *fmt, ...) {
     throw_error(APEX_ERROR_CODE_SYNTAX, fmt);
 }
 
-void apex_error_type(const char *fmt, ...) {
+void ApexError_type(const char *fmt, ...) {
     throw_error(APEX_ERROR_CODE_TYPE, fmt);
 }
 
-void apex_error_nomem(const char *fmt, ...) {
-    throw_error(APEX_ERROR_CODE_NOMEM, fmt);
+void ApexError_out_of_bounds(const char *fmt, ...) {
+    throw_error(APEX_ERROR_CODE_OUT_OF_BOUNDS, fmt);
 }
 
-void apex_error_argument(const char *fmt, ...) {
+void ApexError_argument(const char *fmt, ...) {
     throw_error(APEX_ERROR_CODE_ARGUMENT, fmt);
 }
 
-void apex_error_reference(const char *fmt, ...) {
+void ApexError_reference(const char *fmt, ...) {
     throw_error(APEX_ERROR_CODE_REFERENCE, fmt);
 }
 
+void ApexError_parse(const char *fmt, ...) {
+    throw_error(APEX_ERROR_CODE_REFERENCE, fmt);
+}
+
+void ApexError_compiler(const char *fmt, ...) {
+    throw_error(APEX_ERROR_CODE_COMPILER, fmt);
+}

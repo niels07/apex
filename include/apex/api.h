@@ -1,7 +1,7 @@
 #ifndef APEX_API_H
 #define APEX_API_H
 
-struct ApexApiExports {
+struct ApexApi_exports {
     ApexType type;
     char *name;
     int intval;
@@ -22,7 +22,7 @@ struct ApexApiMethods {
 #define APEX_NEW_MODULE() struct ApexApiMethods APEX_API_METHODS = {NULL, NULL}
 #define APEX_POP() APEX_API_METHODS.pop()
 #define APEX_TOP() APEX_API_METHODS.top()
-#define APEX_EXPORT struct ApexApiExports APEX_API_EXPORTS[] =
+#define APEX_EXPORT struct ApexApi_exports APEX_API_EXPORTS[] =
 
 #define APEX_EXPORT_END { 0, NULL, 0, 0.0, NULL, 0, NULL }
 

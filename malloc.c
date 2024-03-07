@@ -4,43 +4,61 @@
 #include "error.h"
 
 static void out_of_memory(size_t size) {
-    apex_error_throw(APEX_ERROR_CODE_NOMEM, "failed to allocate %d bytes", size);       
+    ApexError_throw(APEX_ERROR_CODE_MEMORY,
+        "failed to allocate %d bytes", size);       
 }
 
 void *apex_malloc(size_t size) {
-    void *p = malloc(size);
+    void *ptr = malloc(size);
 
-    if (!p) {
+    if (!ptr) {
         out_of_memory(size);
     }
-    return p;
+    return ptr;
 }
 
 void *apex_calloc(size_t n, size_t size) {
-    void *p = calloc(n, size);
+    void *ptr = calloc(n, size);
 
-    if (!p) {
+    if (!ptr) {
         out_of_memory(size);
     }
-    return p;
+    return ptr;
 }
 
-void *apex_realloc(void *p, size_t size) {
-    void *newP;
+void *apex_realloc(void *ptr, size_t size) {
+    void *new_ptr;
 
-    if (!p) {
+    if (!ptr) {
         return apex_malloc(size);
     }
 
-    newP = realloc(p, size);
-    if (!newP) {
+    new_ptr = realloc(ptr, size);
+    if (!new_ptr) {
         out_of_memory(size);
     }
-    return p;
+    return new_ptr;
 }
 
-void apex_free(void *p) {
-    if (p) {
-        free(p);
+char *dupstr(const char *src) {
+    char *str;
+    char *ptr;
+    int len = 0;
+
+    while (src[len]) {
+        len++;
+    }
+    str = apex_malloc(len + 1);
+    ptr = str;
+    while (*src) {
+        *ptr++ = *src++;
+    }
+    *ptr = '\0';
+    return str;
+}
+
+void apex_free(void *ptr) {
+    if (ptr) {
+        free(ptr);
     }
 }
