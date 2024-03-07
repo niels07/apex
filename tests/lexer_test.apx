@@ -1,2 +1,13 @@
-str z = "hello world"
+import "io"
+
+function hello_world
+    print(hello word)
+end
+
+
 int x = 5 
+int y = 4
+int z = x + y
+print x;
+
+hello world()
