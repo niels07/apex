@@ -1,0 +1,19 @@
+{
+    "files.associations": {
+        "string.h": "c",
+        "parser.h": "c",
+        "value.h": "c",
+        "mem.h": "c",
+        "type_traits": "c",
+        "array": "c",
+        "string_view": "c",
+        "initializer_list": "c",
+        "typeinfo": "c",
+        "optional": "c",
+        "system_error": "c",
+        "functional": "c",
+        "tuple": "c",
+        "utility": "c",
+        "random": "c"
+    }
+}

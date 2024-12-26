@@ -1,0 +1,60 @@
+fn add(a, b) {
+	return a + b;
+}
+
+fn sub(a, b) {
+	return a - b;
+}
+
+fn mul(a, b) {
+	return a * b;
+}
+
+fn div(a, b) {
+	return a / b;
+}
+
+
+cont = true;
+
+while (cont) {
+	write("enter first number: ");
+	a = flt(read());
+	write("enter second number: ");
+	b = flt(read());
+	print("1. add");
+	print("2. subtract");
+	print("3. multiply");
+	print("4. divide");
+	input = read();
+	result = 0;
+	if (input == "1") {
+		result = add(a, b);
+	} elif (input == "2") {
+		result = sub(a, b);
+	} elif (input == "3") {
+		result = mul(a, b);
+	} elif (input == "4") {
+		if (b == 0) {
+			print("invalid input, division by 0");
+			continue;
+		}
+		result = div(a, b);
+	} else {
+		print("invalid input");
+		continue;
+	}
+	print("result: " + str(result));
+	while (input != "y" && input != "n") {
+		write("would you like to do another calculation [y/n]");
+		input = read();
+		if (input == "y") {
+			continue;
+		} elif (input == "n") {
+			cont = false;
+		} else {
+			print("invalid input");
+		}
+	}
+}
+print("GoodBye!");

@@ -1,0 +1,15 @@
+
+input = "";
+cont = true;
+
+while (input != "y" && input != "n") {
+    write("would you like to do another calculation [y/n] ");
+    input = read();
+    if (input == "y") {
+        continue;
+    } elif (input == "n") {
+        cont = false;
+    } else {
+        print("invalid input");
+    }
+}
