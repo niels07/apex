@@ -11,7 +11,8 @@
 void *mem_alloc(size_t size) {
     void *p = malloc(size);
     if (!p) {
-        apexErr_fatal("out of memory, failed to allocate %d bytes", size);
+        apexErr_print("out of memory, failed to allocate %d bytes", size);
+        exit(EXIT_FAILURE);
     }
     return p;
 }
@@ -30,7 +31,8 @@ void *mem_alloc(size_t size) {
 void *mem_calloc(size_t count, size_t size) {
     void *p = calloc(count, size);
     if (!p) {
-        apexErr_fatal("out of memory, failed to allocate %d bytes", size);
+        apexErr_print("out of memory, failed to allocate %d bytes", size);
+        exit(EXIT_FAILURE);
     }
     return p;
 }
@@ -46,7 +48,8 @@ void *mem_calloc(size_t count, size_t size) {
 void *mem_realloc(void *p, size_t size) {
     void *q = realloc(p, size);
     if (!q) {
-        apexErr_fatal("out of memory, failed to reallocate %d bytes", size);
+        apexErr_print("out of memory, failed to reallocate %d bytes", size);
+        exit(EXIT_FAILURE);
     }
     return q;
 }

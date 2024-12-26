@@ -39,47 +39,12 @@ static const char *get_ast_node_type_name(ASTNodeType type) {
     }
 }
 
-static const char *opcode_to_string(OpCode opcode) {
-    switch (opcode) {
-        case OP_PUSH_INT: return "OP_PUSH_INT";
-        case OP_PUSH_FLT: return "OP_PUSH_FLT";
-        case OP_PUSH_STR: return "OP_PUSH_STR";
-        case OP_PUSH_BOOL: return "OP_PUSH_BOOL";
-        case OP_POP: return "OP_POP";
-        case OP_ADD: return "OP_ADD";
-        case OP_SUB: return "OP_SUB";
-        case OP_MUL: return "OP_MUL";
-        case OP_DIV: return "OP_DIV";
-        case OP_RETURN: return "OP_RETURN";
-        case OP_CALL: return "OP_CALL";
-        case OP_JUMP: return "OP_JUMP";
-        case OP_JUMP_IF_FALSE: return "OP_JUMP_IF_FALSE";
-        case OP_SET_GLOBAL: return "OP_SET_GLOBAL";
-        case OP_GET_GLOBAL: return "OP_GET_GLOBAL";
-        case OP_GET_LOCAL: return "OP_GET_LOCAL";    
-        case OP_SET_LOCAL: return "OP_SET_LOCAL";
-        case OP_NOT: return "OP_NOT";
-        case OP_NEGATE: return "OP_NEGATE";
-        case OP_CALL_LIB: return "OP_CALL_LIB";
-        case OP_FUNCTION_START: return "OP_FUNCTION_START";
-        case OP_FUNCTION_END: return "OP_FUNCTION_END";
-        case OP_EQ: return "OP_EQ";
-        case OP_NE: return "OP_NE";
-        case OP_LT: return "OP_LT";
-        case OP_LE: return "OP_LE";
-        case OP_GT: return "OP_GT";
-        case OP_GE: return "OP_GE";
-        case OP_HALT: return "OP_HALT";
-        default: return "UNKNOWN_OPCODE";
-    }
-}
-
 #define EMIT_OP_INT(vm, opcode, value) emit_instruction(vm, opcode, apexVal_makeint(value))
 #define EMIT_OP_FLT(vm, opcode, value) emit_instruction(vm, opcode, apexVal_makeflt(value))
 #define EMIT_OP_STR(vm, opcode, value) emit_instruction(vm, opcode, apexVal_makestr(value))
 #define EMIT_OP_BOOL(vm, opcode, value) emit_instruction(vm, opcode, apexVal_makebool(value))
 #define EMIT_OP(vm, opcode) emit_instruction(vm, opcode, zero_value())
-#define UPDATE_LINENO(vm, node) vm->lineno = node->lineno
+#define UPDATE_SRCLOC(vm, node) vm->srcloc = node->srcloc
 
 static void compile_expression(ApexVM *vm, AST *node);
 static void compile_statement(ApexVM *vm, AST *node);
@@ -127,29 +92,10 @@ static ApexValue zero_value(void) {
  */
 static void emit_instruction(ApexVM *vm, OpCode opcode, ApexValue value) {
     ensure_capacity(vm);
-    printf("[DEBUG] emitting %s ", opcode_to_string(opcode));
-    switch (opcode) {
-    case OP_PUSH_INT:
-        printf("%d", value.intval);
-        break;
-    case OP_PUSH_FLT:
-        printf("%f", value.fltval);
-        break;
-    case OP_SET_GLOBAL:
-    case OP_PUSH_STR:
-        printf("\"%s\"", value.strval);
-        break;
-    case OP_PUSH_BOOL:
-        printf("%s", value.boolval ? "true" : "false");
-        break;
-
-    default:
-        break;
-    }
-    printf("\n");
-    vm->chunk->ins[vm->chunk->ins_n].lineno = vm->lineno;
+    vm->chunk->ins[vm->chunk->ins_n].srcloc = vm->srcloc;
     vm->chunk->ins[vm->chunk->ins_n].value = value;
-    vm->chunk->ins[vm->chunk->ins_n++].opcode = opcode;
+    vm->chunk->ins[vm->chunk->ins_n].opcode = opcode;
+    vm->chunk->ins_n++;
 }
 
 /**
@@ -214,7 +160,7 @@ static void compile_variable(ApexVM *vm, AST *node, Bool is_assignment) {
             EMIT_OP_STR(vm, OP_SET_GLOBAL, var_name);
         }
     } else {
-        apexErr_fatal("variable '%s' is not defined on line %d", var_name, node->lineno);
+        apexErr_fatal(node->srcloc, "variable '%s' is not defined", var_name);
     }
 }
 
@@ -257,9 +203,9 @@ static const char **compile_parameter_list(ApexVM *vm, AST *param_list, int *par
 
             if (parameter->type != AST_VAR) {
                 apexErr_fatal(
-                    "expected parameter to be a variable, got: %s on line %d", 
-                    get_ast_node_type_name(parameter->type), 
-                    parameter->lineno);
+                    parameter->srcloc,
+                    "expected parameter to be a variable, got: %s", 
+                    get_ast_node_type_name(parameter->type));
             }
             add_local_symbol(&vm->local_scopes, parameter->value.strval);
             if (pcount >= psize) {
@@ -277,6 +223,7 @@ static const char **compile_parameter_list(ApexVM *vm, AST *param_list, int *par
             }
         } else {
             apexErr_fatal(
+                param_list->srcloc,
                 "Invalid AST node in parameter list, expected "
                 "AST_PARAMETER_LIST or AST_VARIABLE, got %s", 
                 get_ast_node_type_name(param_list->type));
@@ -367,7 +314,7 @@ static void compile_function_call(ApexVM *vm, AST *node) {
     int fn_addr;
     int i;
 
-    UPDATE_LINENO(vm, node);
+    UPDATE_SRCLOC(vm, node);
 
     for (i = 0; apex_stdlib[i].name; i++) {
         if (strcmp(apex_stdlib[i].name, fn_name) == 0) {
@@ -380,10 +327,7 @@ static void compile_function_call(ApexVM *vm, AST *node) {
     fn_addr = get_symbol_address(&vm->fn_table, fn_name);
     
     if (fn_addr == -1) {
-        apexErr_fatal(
-            "function '%s' is not defined on line %d", 
-            fn_name, 
-            node->left->lineno);
+        apexErr_fatal(node->srcloc, "function '%s' is not defined", fn_name);
     }
 
     compile_argument_list(vm, node->right);
@@ -403,102 +347,102 @@ static void compile_function_call(ApexVM *vm, AST *node) {
  * @param node The AST node representing the expression to be compiled.
  */
 static void compile_expression(ApexVM *vm, AST *node) {
-    UPDATE_LINENO(vm, node);
+    UPDATE_SRCLOC(vm, node);
     printf("[DEBUG] Compiling expression: %s\n", get_ast_node_type_name(node->type));
     switch (node->type) {
-        case AST_INT:
-            EMIT_OP_INT(vm, OP_PUSH_INT, atoi(node->value.strval));
-            break;
+    case AST_INT:
+        EMIT_OP_INT(vm, OP_PUSH_INT, atoi(node->value.strval));
+        break;
 
-        case AST_FLT:
-            EMIT_OP_FLT(vm, OP_PUSH_FLT, atof(node->value.strval));
-            break;
+    case AST_FLT:
+        EMIT_OP_FLT(vm, OP_PUSH_FLT, atof(node->value.strval));
+        break;
 
-        case AST_STR:
-            EMIT_OP_STR(vm, OP_PUSH_STR, node->value.strval);
-            break;
+    case AST_STR:
+        EMIT_OP_STR(vm, OP_PUSH_STR, node->value.strval);
+        break;
 
-        case AST_BOOL:
-            EMIT_OP_BOOL(vm, OP_PUSH_BOOL, strcmp(node->value.strval, "true") == 0 ? TRUE : FALSE);
-            break;
-        
-        case AST_BINARY_EXPR:
-            compile_expression(vm, node->left);
-            compile_expression(vm, node->right);
-            if (strcmp(node->value.strval, "+") == 0) {
-                EMIT_OP(vm, OP_ADD);
-            } else if (node->value.strval == new_string("+", 1)) {
-                EMIT_OP(vm, OP_ADD);
-            } else if (node->value.strval == new_string("-", 1)) {
-                EMIT_OP(vm, OP_SUB);
-            } else if (node->value.strval == new_string("*", 1)) {
-                EMIT_OP(vm, OP_MUL);
-            } else if (node->value.strval == new_string("/", 1)) {
-                EMIT_OP(vm, OP_DIV);
-            } else if (node->value.strval == new_string("==", 2)) {
-                EMIT_OP(vm, OP_EQ);
-            } else if (node->value.strval == new_string("!=", 2)) {
-                EMIT_OP(vm, OP_NE);
-            } else if (node->value.strval == new_string("<", 1)) {
-                EMIT_OP(vm, OP_LT);
-            } else if (node->value.strval == new_string("<=", 2)) {
-                EMIT_OP(vm, OP_LE);
-            } else if (node->value.strval == new_string(">", 1)) {
-                EMIT_OP(vm, OP_GT);
-            } else if (node->value.strval == new_string(">=", 2)) {
-                EMIT_OP(vm, OP_GE);
-            }
-            break;
-
-        case AST_UNARY_EXPR:
-            compile_expression(vm, node->right);
-            if (strcmp(node->value.strval, "!") == 0){
-                EMIT_OP(vm, OP_NOT);
-            }
-            if (strcmp(node->value.strval, "-") == 0) {
-                EMIT_OP(vm, OP_NEGATE);
-            }
-            break;
-
-        case AST_LOGICAL_EXPR: {
-            int short_circuit_jmp;
-            int end_jmp;
-            compile_expression(vm, node->left);
-
-            if (node->value.strval == new_string("&&", 2)) {
-                EMIT_OP(vm, OP_JUMP_IF_FALSE);
-                short_circuit_jmp = vm->chunk->ins_n - 1;
-                compile_expression(vm, node->right);
-                EMIT_OP(vm, OP_JUMP);
-                end_jmp = vm->chunk->ins_n - 1;
-                vm->chunk->ins[short_circuit_jmp].value.intval = vm->chunk->ins_n - short_circuit_jmp - 1;
-                EMIT_OP_BOOL(vm, OP_PUSH_BOOL, FALSE);
-                vm->chunk->ins[end_jmp].value.intval = vm->chunk->ins_n - end_jmp - 1;
-            } else if (node->value.strval == new_string("||", 2)) {
-                EMIT_OP(vm, OP_JUMP_IF_FALSE);
-                short_circuit_jmp = vm->chunk->ins_n - 1;
-                compile_expression(vm, node->right);
-                vm->chunk->ins[short_circuit_jmp].value.intval = vm->chunk->ins_n - short_circuit_jmp - 1;
-                EMIT_OP_BOOL(vm, OP_PUSH_BOOL, TRUE);
-            }
-            break;
-         
+    case AST_BOOL:
+        EMIT_OP_BOOL(vm, OP_PUSH_BOOL, strcmp(node->value.strval, "true") == 0 ? TRUE : FALSE);
+        break;
+    
+    case AST_BINARY_EXPR:
+        compile_expression(vm, node->left);
+        compile_expression(vm, node->right);
+        if (strcmp(node->value.strval, "+") == 0) {
+            EMIT_OP(vm, OP_ADD);
+        } else if (node->value.strval == new_string("+", 1)) {
+            EMIT_OP(vm, OP_ADD);
+        } else if (node->value.strval == new_string("-", 1)) {
+            EMIT_OP(vm, OP_SUB);
+        } else if (node->value.strval == new_string("*", 1)) {
+            EMIT_OP(vm, OP_MUL);
+        } else if (node->value.strval == new_string("/", 1)) {
+            EMIT_OP(vm, OP_DIV);
+        } else if (node->value.strval == new_string("==", 2)) {
+            EMIT_OP(vm, OP_EQ);
+        } else if (node->value.strval == new_string("!=", 2)) {
+            EMIT_OP(vm, OP_NE);
+        } else if (node->value.strval == new_string("<", 1)) {
+            EMIT_OP(vm, OP_LT);
+        } else if (node->value.strval == new_string("<=", 2)) {
+            EMIT_OP(vm, OP_LE);
+        } else if (node->value.strval == new_string(">", 1)) {
+            EMIT_OP(vm, OP_GT);
+        } else if (node->value.strval == new_string(">=", 2)) {
+            EMIT_OP(vm, OP_GE);
         }
-        case AST_VAR:
-            compile_variable(vm, node, FALSE);
-            break;
+        break;
 
-        case AST_ASSIGNMENT:
+    case AST_UNARY_EXPR:
+        compile_expression(vm, node->right);
+        if (strcmp(node->value.strval, "!") == 0){
+            EMIT_OP(vm, OP_NOT);
+        }
+        if (strcmp(node->value.strval, "-") == 0) {
+            EMIT_OP(vm, OP_NEGATE);
+        }
+        break;
+
+    case AST_LOGICAL_EXPR: {
+        int short_circuit_jmp;
+        int end_jmp;
+        compile_expression(vm, node->left);
+
+        if (node->value.strval == new_string("&&", 2)) {
+            EMIT_OP(vm, OP_JUMP_IF_FALSE);
+            short_circuit_jmp = vm->chunk->ins_n - 1;
             compile_expression(vm, node->right);
-            compile_variable(vm, node->left, TRUE);
-            break;
+            EMIT_OP(vm, OP_JUMP);
+            end_jmp = vm->chunk->ins_n - 1;
+            vm->chunk->ins[short_circuit_jmp].value.intval = vm->chunk->ins_n - short_circuit_jmp - 1;
+            EMIT_OP_BOOL(vm, OP_PUSH_BOOL, FALSE);
+            vm->chunk->ins[end_jmp].value.intval = vm->chunk->ins_n - end_jmp - 1;
+        } else if (node->value.strval == new_string("||", 2)) {
+            EMIT_OP(vm, OP_JUMP_IF_FALSE);
+            short_circuit_jmp = vm->chunk->ins_n - 1;
+            compile_expression(vm, node->right);
+            vm->chunk->ins[short_circuit_jmp].value.intval = vm->chunk->ins_n - short_circuit_jmp - 1;
+            EMIT_OP_BOOL(vm, OP_PUSH_BOOL, TRUE);
+        }
+        break;
+        
+    }
+    case AST_VAR:
+        compile_variable(vm, node, FALSE);
+        break;
 
-        case AST_FN_CALL: 
-            compile_function_call(vm, node);
-            break;
+    case AST_ASSIGNMENT:
+        compile_expression(vm, node->right);
+        compile_variable(vm, node->left, TRUE);
+        break;
 
-        default:
-            apexErr_fatal("Unhandled AST node type: %d", node->type);
+    case AST_FN_CALL: 
+        compile_function_call(vm, node);
+        break;
+
+    default:
+        apexErr_fatal(node->srcloc, "Unhandled AST node type: %d", node->type);
     }
 }
 
@@ -524,7 +468,7 @@ static void compile_loop(ApexVM *vm, AST *condition, AST *body, AST *increment) 
     int previous_loop_start = vm->loop_start;
     int previous_loop_end = vm->loop_end;
 
-    UPDATE_LINENO(vm, condition);
+    UPDATE_SRCLOC(vm, condition);
     vm->loop_start = vm->chunk->ins_n;
 
     if (condition) {
@@ -570,79 +514,79 @@ static void compile_statement(ApexVM *vm, AST *node) {
     }
     printf("[DEBUG] Compiling statement: %s - %d\n", get_ast_node_type_name(node->type), node->type); 
     switch (node->type) {
-        case AST_IF: {
-            int false_jmp_i;
-            int true_jmp_i;
+    case AST_IF: {
+        int false_jmp_i;
+        int true_jmp_i;
 
-            vm->lineno = node->lineno;
+        UPDATE_SRCLOC(vm, node);
 
-            compile_expression(vm, node->left); /* Condition */
-            EMIT_OP(vm, OP_JUMP_IF_FALSE);
-            false_jmp_i = vm->chunk->ins_n - 1;
+        compile_expression(vm, node->left); /* Condition */
+        EMIT_OP(vm, OP_JUMP_IF_FALSE);
+        false_jmp_i = vm->chunk->ins_n - 1;
 
-            compile_statement(vm, node->right); /* Block or statement */
-            EMIT_OP(vm, OP_JUMP);
-            true_jmp_i = vm->chunk->ins_n - 1;
+        compile_statement(vm, node->right); /* Block or statement */
+        EMIT_OP(vm, OP_JUMP);
+        true_jmp_i = vm->chunk->ins_n - 1;
 
-            if (node->value.ast_node) {
-                vm->chunk->ins[false_jmp_i].value.intval = vm->chunk->ins_n - false_jmp_i - 1;
-                compile_statement(vm, node->value.ast_node);
-            } else {
-                vm->chunk->ins[false_jmp_i].value.intval = vm->chunk->ins_n - false_jmp_i - 1;
-            }
-            vm->chunk->ins[true_jmp_i].value.intval = vm->chunk->ins_n - true_jmp_i - 1;
-            break;
+        if (node->value.ast_node) {
+            vm->chunk->ins[false_jmp_i].value.intval = vm->chunk->ins_n - false_jmp_i - 1;
+            compile_statement(vm, node->value.ast_node);
+        } else {
+            vm->chunk->ins[false_jmp_i].value.intval = vm->chunk->ins_n - false_jmp_i - 1;
         }
-        case AST_WHILE: 
-            compile_loop(vm, node->left, node->right, NULL);
-            break;
+        vm->chunk->ins[true_jmp_i].value.intval = vm->chunk->ins_n - true_jmp_i - 1;
+        break;
+    }
+    case AST_WHILE: 
+        compile_loop(vm, node->left, node->right, NULL);
+        break;
 
-        case AST_FOR: 
+    case AST_FOR: 
+        compile_statement(vm, node->left);
+        compile_loop(vm, node->right->left, node->right->right, node->right->left);
+        break;
+        
+    case AST_CONTINUE:
+        if (vm->loop_start == -1) {
+            apexErr_fatal(node->srcloc, "Invalid 'continue' outside of loop on line %d");
+        }
+        EMIT_OP_INT(vm, OP_JUMP, vm->loop_start - vm->chunk->ins_n - 1);
+        break;
+
+    case AST_BREAK:
+        if (vm->loop_end == -1) {
+            apexErr_fatal(node->srcloc,"Invalid 'break' outside of loop on line %d");
+        }
+        EMIT_OP_INT(vm, OP_JUMP, vm->loop_end - vm->chunk->ins_n - 1);
+        break;
+
+    case AST_FN_DECL:
+        compile_function_declaration(vm, node);
+        break;
+
+    case AST_RETURN:
+        compile_expression(vm, node->left);
+        EMIT_OP(vm, OP_RETURN);
+        break;
+
+    case AST_BLOCK:            
+        compile_statement(vm, node->right);
+        if (node->left) {
             compile_statement(vm, node->left);
-            compile_loop(vm, node->right->left, node->right->right, node->right->left);
-            break;
-            
-        case AST_CONTINUE:
-            if (vm->loop_start == -1) {
-                apexErr_fatal("Invalid 'continue' outside of loop on line %d", node->lineno);
-            }
-            EMIT_OP_INT(vm, OP_JUMP, vm->loop_start - vm->chunk->ins_n - 1);
-            break;
+        }           
+        break;
 
-        case AST_BREAK:
-            if (vm->loop_end == -1) {
-                apexErr_fatal("Invalid 'break' outside of loop on line %d", node->lineno);
-            }
-            EMIT_OP_INT(vm, OP_JUMP, vm->loop_end - vm->chunk->ins_n - 1);
-            break;
-
-        case AST_FN_DECL:
-            compile_function_declaration(vm, node);
-            break;
-
-        case AST_RETURN:
-            compile_expression(vm, node->left);
-            EMIT_OP(vm, OP_RETURN);
-            break;
-
-        case AST_BLOCK:            
+    case AST_STATEMENT:
+        if (node->left) {
+            compile_statement(vm, node->left);
+        }
+        if (node->right) {
             compile_statement(vm, node->right);
-            if (node->left) {
-                compile_statement(vm, node->left);
-            }           
-            break;
+        }
+        break;
 
-        case AST_STATEMENT:
-            if (node->left) {
-                compile_statement(vm, node->left);
-            }
-            if (node->right) {
-                compile_statement(vm, node->right);
-            }
-            break;
-
-        default:
-            compile_expression(vm, node);
+    default:
+        compile_expression(vm, node);
     }
 }
 

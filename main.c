@@ -22,7 +22,8 @@ static char *read_file(const char *path) {
     char *buffer;
 
     if (!file) {
-        apexErr_fatal("failed to open file: %s", path);
+        fprintf(stderr, "failed to open file: %s\n", path);
+        exit(EXIT_FAILURE);
     }
     fseek(file, 0, SEEK_END);
     size = ftell(file);
@@ -48,7 +49,7 @@ int main(int argc, char *argv[]) {
 
     source = read_file(argv[1]);
     init_string_table();
-    init_lexer(&lexer, source);
+    init_lexer(&lexer, argv[1], source);
     init_parser(&parser, &lexer);
     
     ast = parse_program(&parser);    

@@ -8,6 +8,7 @@
 #include "string.h"
 #include "error.h"
 #include "stdlib.h"
+#include "parser.h"
 
 #define STACK_PUSH(vm, val) ((vm)->stack[(vm)->stack_top++] = (val))
 #define STACK_POP(vm)       ((vm)->stack[--(vm)->stack_top])
@@ -90,11 +91,21 @@ void print_vm_instructions(ApexVM *vm) {
         default:
             break;
         }
-        
         printf("\n");
     }
 }
 
+/**
+ * Initializes a virtual machine structure.
+ *
+ * This function initializes all the fields of a virtual machine structure. It
+ * allocates memory for the instruction chunk and the global and function
+ * symbol tables, and initializes the local scope stack. It also sets the
+ * instruction pointer and stack top to 0, and sets the loop start and end
+ * pointers to -1.
+ *
+ * @param vm A pointer to the virtual machine structure to be initialized.
+ */
 void init_vm(ApexVM *vm) {
     vm->stack_top = 0;
     vm->ip = 0;
@@ -105,12 +116,23 @@ void init_vm(ApexVM *vm) {
     vm->chunk->ins_n = 0;
     vm->loop_start = -1;
     vm->loop_end = -1;
-    vm->lineno = 0;
+    vm->srcloc.lineno = 0;
+    vm->srcloc.filename = NULL;
+    vm->call_stack_top = 0;
     init_symbol_table(&vm->global_table);
     init_symbol_table(&vm->fn_table);
     init_scope_stack(&vm->local_scopes);
 }
 
+/**
+ * Frees the memory allocated for the virtual machine structure.
+ *
+ * This function should be called when a virtual machine is no longer needed. It
+ * frees all memory allocated for the instruction chunk, the global symbol table,
+ * the function table, and the local scope stack.
+ *
+ * @param vm A pointer to the virtual machine structure to be freed.
+ */
 void free_vm(ApexVM *vm) {
     free(vm->chunk->ins);
     free(vm->chunk);
@@ -119,48 +141,217 @@ void free_vm(ApexVM *vm) {
     free_scope_stack(&vm->local_scopes);
 }
 
+
+/**
+ * Creates a CallFrame structure with the given function name and source location.
+ *
+ * This function is used to create a call frame structure for the call stack.
+ * It does not check if the function name is valid or if the source location is
+ * valid. It simply copies the given values into a CallFrame structure and
+ * returns it.
+ *
+ * @param fn_name The name of the function for the call frame.
+ * @param srcloc The source location for the call frame.
+ * @return A CallFrame structure with the given function name and source
+ *         location.
+ */
+static CallFrame create_callframe(const char *fn_name, SrcLoc srcloc) {
+    CallFrame callframe;
+    callframe.fn_name = fn_name;
+    callframe.srcloc = srcloc;
+    return callframe;
+}
+
+/**
+ * Pushes a callframe onto the call stack with the given function name and source
+ * location.
+ *
+ * This function checks if the call stack is full before pushing a new callframe
+ * onto the call stack. If the call stack is full, it will raise a runtime error
+ * of "call stack overflow". Otherwise, it will allocate a new callframe with the
+ * given function name and source location, and push it onto the call stack.
+ *
+ * @param vm A pointer to the virtual machine instance whose call stack the
+ *           callframe will be pushed onto.
+ * @param fn_name The name of the function for the callframe.
+ * @param srcloc The source location for the callframe.
+ */
+static void push_callframe(ApexVM *vm, const char *fn_name, SrcLoc srcloc) {
+    if (vm->call_stack_top >= CALL_STACK_MAX) {
+        apexErr_fatal(srcloc, "Call stack overflow!");
+    }
+    printf("pusing callframe: %s at %d\n", fn_name, srcloc.lineno);
+    vm->call_stack[vm->call_stack_top++] = create_callframe(fn_name, srcloc);
+}
+
+/**
+ * Pops the top call frame off the call stack.
+ *
+ * This function checks if the call stack is empty before popping a call frame
+ * off the call stack. If the call stack is empty, it will raise a runtime error
+ * of "call stack underflow". Otherwise, it will decrement the call stack top
+ * and return.
+ *
+ * @param vm A pointer to the virtual machine instance whose call stack the
+ *           callframe will be popped from.
+ * @param srcloc The source location for the error message if the call stack is
+ *               underflow.
+ */
+static void pop_callframe(ApexVM *vm, SrcLoc srcloc) {
+    if (vm->call_stack_top == 0) {
+        apexErr_fatal(srcloc, "call stack underflow!");
+    }
+    printf("popping callframe: %s\n", vm->call_stack[vm->call_stack_top - 1].fn_name);
+    vm->call_stack_top--;
+}
+
+/**
+ * Retrieves the next instruction from the virtual machine's instruction chunk.
+ *
+ * This function moves the instruction pointer to the next instruction in the
+ * instruction chunk, and returns a pointer to the instruction located at the
+ * new instruction pointer.
+ *
+ * @param vm A pointer to the virtual machine instance whose instruction chunk
+ *           the instruction will be retrieved from.
+ * @return A pointer to the next instruction in the instruction chunk.
+ */
+static Ins *next_ins(ApexVM *vm) {
+    vm->ins = &vm->chunk->ins[vm->ip++];
+    return vm->ins;
+}
+
+/**
+ * Pushes an ApexValue onto the virtual machine's stack.
+ *
+ * This function takes an ApexValue and pushes it onto the stack of the
+ * specified virtual machine instance. It does not perform any type checking
+ * of the value. If the stack is full (i.e. the stack top points to the end
+ * of the stack array), it will generate a runtime error of "stack overflow".
+ *
+ * @param vm A pointer to the virtual machine instance whose stack the
+ *           value will be pushed onto.
+ * @param value The ApexValue to be pushed onto the stack.
+ */
 static void stack_push(ApexVM *vm, ApexValue value) {
     if (vm->stack_top >= STACK_MAX) {
-        fprintf(stderr, "Stack overflow\n");
-        exit(EXIT_FAILURE);
+        apexErr_runtime(vm, "Stack overflow\n");
     }
     vm->stack[vm->stack_top++] = value;
 }
 
+/**
+ * Pops an ApexValue off the virtual machine's stack.
+ *
+ * This function decrements the stack top and returns the value at the new
+ * top of the stack. If the stack is empty (i.e. the top points to the
+ * beginning of the stack), it will generate a runtime error of "stack
+ * underflow".
+ *
+ * @param vm A pointer to the virtual machine instance whose stack the
+ *           value will be popped from.
+ *
+ * @return The ApexValue at the top of the stack after popping.
+ */
 static ApexValue stack_pop(ApexVM *vm) {
     if (vm->stack_top == 0) {
-        fprintf(stderr, "Stack underflow\n");
-        exit(EXIT_FAILURE);
+        apexErr_runtime(vm, "stack underflow");
     }
     return vm->stack[--vm->stack_top];
 }
+
+/**
+ * Pushes an ApexValue onto the virtual machine's stack.
+ *
+ * This function takes an ApexValue and pushes it onto the stack of the 
+ * specified virtual machine instance. It does not perform any type 
+ * conversion or checking on the value being pushed.
+ *
+ * @param vm A pointer to the virtual machine instance whose stack the
+ *           value will be pushed onto.
+ * @param value The ApexValue to push onto the stack.
+ */
 
 void apexVM_pushval(ApexVM *vm, ApexValue value) {
     stack_push(vm, value);
 }
 
+/**
+ * Pushes a string value onto the stack.
+ *
+ * This function allocates a new string from the string table and creates an
+ * ApexValue with the string type from the newly allocated string. The string
+ * value is then pushed onto the stack.
+ *
+ * @param vm A pointer to the virtual machine to use.
+ * @param str The string value to push.
+ */
 void apexVM_pushstr(ApexVM *vm, const char *str) {
     char *s = new_string(str, strlen(str));
     stack_push(vm, apexVal_makestr(s));
 }
 
+/**
+ * Pushes an integer value onto the stack.
+ *
+ * @param vm A pointer to the virtual machine to use.
+ * @param i The integer value to push.
+ */
 void apexVM_pushint(ApexVM *vm, int i) {
     stack_push(vm, apexVal_makeint(i));
 }
 
+/**
+ * Pushes a float value onto the stack.
+ *
+ * @param vm A pointer to the virtual machine to use.
+ * @param flt The float value to push.
+ */
 void apexVM_pushflt(ApexVM *vm, float flt) {
     stack_push(vm, apexVal_makeflt(flt));
 }
 
+/**
+ * Pushes a boolean value onto the stack.
+ *
+ * @param vm A pointer to the virtual machine to use.
+ * @param b The boolean value to push.
+ */
 void apexVM_pushbool(ApexVM *vm, Bool b) {
     stack_push(vm, apexVal_makebool(b));
 }
 
+/**
+ * Pops the top value off the stack and returns it.
+ *
+ * This function is equivalent to a call to stack_pop, and is provided as a
+ * convenience. It does not perform any error checking or bounds checking on
+ * the stack.
+ *
+ * @return The top value on the stack.
+ */
 ApexValue apexVM_pop(ApexVM *vm) {
     return stack_pop(vm);
 }
 
-static ApexValue vm_add(int lineno, ApexValue a, ApexValue b) {
+/**
+ * Adds two ApexValue objects and returns the result.
+ *
+ * This function performs addition between two values, `a` and `b`. It supports
+ * addition of integers and floats, promoting integers to floats when necessary.
+ * It also concatenates two strings if both values are strings.
+ *
+ * If the types of `a` and `b` are incompatible for addition, such as a boolean
+ * with any other type, an error is raised. Specifically, strings cannot be
+ * added to integers, floats, or booleans, and booleans cannot be added to any
+ * numeric type.
+ *
+ * @param vm A pointer to the virtual machine instance.
+ * @param a The first operand as an ApexValue.
+ * @param b The second operand as an ApexValue.
+ * @return The result of the addition as an ApexValue, or null if an error occurs.
+ */
+static ApexValue vm_add(ApexVM *vm, ApexValue a, ApexValue b) {
     if (a.type == APEX_VAL_INT && b.type == APEX_VAL_INT) {
         return apexVal_makeint(a.intval + b.intval);
     }
@@ -179,28 +370,38 @@ static ApexValue vm_add(int lineno, ApexValue a, ApexValue b) {
         return apexVal_makestr(newstr);
     }
     if (a.type == APEX_VAL_BOOL && b.type == APEX_VAL_BOOL) {
-        apexErr_runtime(lineno, "cannot perform arithmetic on a boolean value");
+        apexErr_runtime(vm, "cannot perform arithmetic on a boolean value");
     }
     if ((a.type == APEX_VAL_STR && b.type == APEX_VAL_INT) || 
         (a.type == APEX_VAL_INT && b.type == APEX_VAL_STR)) {
-        apexErr_runtime(lineno, "cannot add string to an int");
+        apexErr_runtime(vm, "cannot add string to an int");
     }
     if ((a.type == APEX_VAL_STR && b.type == APEX_VAL_FLT) || 
         (a.type == APEX_VAL_FLT && b.type == APEX_VAL_STR)) {
-        apexErr_runtime(lineno, "cannot add string to an flt");
+        apexErr_runtime(vm, "cannot add string to an flt");
     }
     if ((a.type == APEX_VAL_INT && b.type == APEX_VAL_BOOL) || 
         (a.type == APEX_VAL_BOOL && b.type == APEX_VAL_INT)) {
-        apexErr_runtime(lineno, "cannot add bool to an int");
+        apexErr_runtime(vm, "cannot add bool to an int");
     }
     if ((a.type == APEX_VAL_STR && b.type == APEX_VAL_BOOL) || 
         (a.type == APEX_VAL_BOOL && b.type == APEX_VAL_STR)) {
-        apexErr_runtime(lineno, "cannot add string to a bool");
+        apexErr_runtime(vm, "cannot add string to a bool");
     }
     return apexVal_makenull();
 }
 
-static ApexValue vm_sub(int lineno,ApexValue a, ApexValue b) {
+/**
+ * Subtracts one value from another. If the two values are both integers, or
+ * both floats, or one integer and one float, the result is a float. If the
+ * two values are not both numbers, an error is raised.
+ *
+ * @param vm The virtual machine on which to perform the operation.
+ * @param a The value from which to subtract.
+ * @param b The value to subtract.
+ * @return The result of the subtraction.
+ */
+static ApexValue vm_sub(ApexVM *vm,ApexValue a, ApexValue b) {
     if (a.type == APEX_VAL_INT && b.type == APEX_VAL_INT) {
         return apexVal_makeint(a.intval - b.intval);
     }
@@ -214,14 +415,28 @@ static ApexValue vm_sub(int lineno,ApexValue a, ApexValue b) {
         return apexVal_makeflt(a.fltval - b.intval);
     }
     apexErr_runtime(
-        lineno, 
-        "cannot subtract %s from %s", 
+        vm, "cannot subtract %s from %s", 
         get_value_type_str(a.type), 
         get_value_type_str(b.type));
     return apexVal_makenull();
 }
 
-static ApexValue vm_mul(int lineno,ApexValue a, ApexValue b) {
+/**
+ * Multiplies two ApexValue objects and returns the result.
+ *
+ * This function performs multiplication between two values, `a` and `b`.
+ * It supports multiplication of integers and floats, and handles mixed
+ * type operations by promoting integers to floats when necessary.
+ * 
+ * If the types of `a` and `b` are incompatible for multiplication, an
+ * error is raised and a null value is returned.
+ *
+ * @param vm A pointer to the virtual machine instance.
+ * @param a The first operand as an ApexValue.
+ * @param b The second operand as an ApexValue.
+ * @return The result of the multiplication as an ApexValue.
+ */
+static ApexValue vm_mul(ApexVM *vm, ApexValue a, ApexValue b) {
     if (a.type == APEX_VAL_INT && b.type == APEX_VAL_INT) {
         return apexVal_makeint(a.intval * b.intval);
     }
@@ -236,44 +451,76 @@ static ApexValue vm_mul(int lineno,ApexValue a, ApexValue b) {
         return apexVal_makeflt(a.fltval * b.intval);
     }
     apexErr_runtime(
-        lineno, 
-        "cannot multiply %s with %s", 
+        vm, "cannot multiply %s with %s", 
         get_value_type_str(a.type), 
         get_value_type_str(b.type));
     return apexVal_makenull();
 }
 
-#define CHECK_DIV_ZERO(x) do { \
+#define CHECK_DIV_ZERO(vm, x) do { \
     if (x == 0) { \
-        apexErr_runtime(lineno, "division by zero"); \
+        apexErr_runtime(vm, "division by zero"); \
     } \
 } while (0)
 
-static ApexValue vm_div(int lineno,ApexValue a, ApexValue b) {
+/**
+ * Divides the value on top of the stack by the value below it.
+ *
+ * The division operator can be used on both integers and floats. If the
+ * division results in a remainder, the remainder is discarded.
+ *
+ * @return The result of division as an ApexValue.
+ */
+static ApexValue vm_div(ApexVM *vm, ApexValue a, ApexValue b) {
     if (a.type == APEX_VAL_INT && b.type == APEX_VAL_INT) {
-        CHECK_DIV_ZERO(b.intval);
+        CHECK_DIV_ZERO(vm, b.intval);
         return apexVal_makeint(a.intval / b.intval);
     }
     if (a.type == APEX_VAL_FLT && b.type == APEX_VAL_FLT) {
-        CHECK_DIV_ZERO(b.fltval);
+        CHECK_DIV_ZERO(vm, b.fltval);
         return apexVal_makeflt(a.fltval / b.fltval);
     }
     if (a.type == APEX_VAL_INT && b.type == APEX_VAL_FLT) {
-        CHECK_DIV_ZERO(b.fltval);
+        CHECK_DIV_ZERO(vm, b.fltval);
         return apexVal_makeflt(a.intval / b.fltval);
     }
     if (a.type == APEX_VAL_FLT && b.type == APEX_VAL_INT) {
-        CHECK_DIV_ZERO(b.intval);
+        CHECK_DIV_ZERO(vm, b.intval);
         return apexVal_makeflt(a.fltval / b.intval);
     }
     apexErr_runtime(
-        lineno, 
-        "cannot divide %s by %s", 
+        vm, "cannot divide %s by %s", 
         get_value_type_str(a.type), 
         get_value_type_str(b.type));
     return apexVal_makenull();
 }
 
+/**
+ * Compares two ApexValue objects based on the given opcode.
+ *
+ * This function performs comparisons between two values, `a` and `b`, 
+ * depending on their types and the provided comparison operation code.
+ * It supports comparison of integers, floats, booleans, strings, and 
+ * function pointers. The comparison result is returned as an ApexValue 
+ * of type boolean.
+ *
+ * Supported opcodes for comparison include:
+ * - OP_EQ: Checks if the two values are equal.
+ * - OP_NE: Checks if the two values are not equal.
+ * - OP_LT: Checks if the first value is less than the second value.
+ * - OP_LE: Checks if the first value is less than or equal to the second value.
+ * - OP_GT: Checks if the first value is greater than the second value.
+ * - OP_GE: Checks if the first value is greater than or equal to the second value.
+ *
+ * If the values are of incompatible types for the given operation, 
+ * the comparison defaults to FALSE.
+ *
+ * @param a The first ApexValue to compare.
+ * @param b The second ApexValue to compare.
+ * @param opcode The operation code representing the comparison to perform.
+ * 
+ * @return An ApexValue of type boolean representing the result of the comparison.
+ */
 static ApexValue cmp(ApexValue a, ApexValue b, OpCode opcode) {
 #define CMP_NUMS() do { \
     switch (opcode) { \
@@ -337,10 +584,19 @@ static ApexValue cmp(ApexValue a, ApexValue b, OpCode opcode) {
     return apexVal_makebool(result);
 }
 
+/**
+ * Runs the virtual machine.
+ *
+ * This function dispatches instructions from the current chunk of bytecode
+ * until the OP_HALT instruction is encountered. It pushes and pops values
+ * from the stack as necessary, and maintains a callstack of function calls.
+ *
+ * @param vm The ApexVM to dispatch instructions for.
+ */
 void vm_dispatch(ApexVM *vm) {
     for (;;) {
-        Ins *ins = &vm->chunk->ins[vm->ip++];
-
+        Ins *ins = next_ins(vm);
+        
         switch (ins->opcode) {
         case OP_PUSH_INT:
             stack_push(vm, ins->value);
@@ -365,32 +621,34 @@ void vm_dispatch(ApexVM *vm) {
         case OP_ADD: {
             ApexValue a = stack_pop(vm);
             ApexValue b = stack_pop(vm);
-            stack_push(vm, vm_add(vm->lineno, a, b));
+            stack_push(vm, vm_add(vm, a, b));
             break;
         }
         case OP_SUB: {
             ApexValue a = stack_pop(vm);
             ApexValue b = stack_pop(vm);
-            stack_push(vm, vm_sub(vm->lineno, a, b));
+            stack_push(vm, vm_sub(vm, a, b));
             break;
         }
 
         case OP_MUL: {
             ApexValue a = stack_pop(vm);
             ApexValue b = stack_pop(vm);
-            stack_push(vm, vm_mul(vm->lineno, a, b));
+            stack_push(vm, vm_mul(vm, a, b));
             break;
         }
         case OP_DIV:  {
             ApexValue a = stack_pop(vm);
             ApexValue b = stack_pop(vm);
-            stack_push(vm, vm_div(vm->lineno, a, b));
+            stack_push(vm, vm_div(vm, a, b));
             break;
         }
 
         case OP_RETURN: {
             ApexValue ret_val;
             int ret_addr;
+
+            pop_callframe(vm, ins->srcloc);
 
             if (vm->stack_top > 0) {
                 ret_val = stack_pop(vm);
@@ -412,6 +670,7 @@ void vm_dispatch(ApexVM *vm) {
             int i;
 
             fn = get_symbol_value_by_addr(&vm->fn_table, fn_addr).fnval;
+            push_callframe(vm, fn->name, ins->srcloc);
             push_scope(&vm->local_scopes);
 
             for (i = fn->param_n - 1; i >= 0; i--) {
@@ -465,7 +724,7 @@ void vm_dispatch(ApexVM *vm) {
             const char *name = ins->value.strval;
             ApexValue value = stack_pop(vm);
             if (!set_symbol_value(&vm->global_table, name, value)) {
-                apexErr_fatal("attemt to set an undefined global variable: '%s'", name);
+                apexErr_fatal(ins->srcloc, "attemt to set an undefined global variable: '%s'", name);
             }
             break;
         }
@@ -479,7 +738,7 @@ void vm_dispatch(ApexVM *vm) {
             int addr = ins->value.intval;
             ApexValue value = stack_pop(vm);
             if (set_local_symbol_value(&vm->local_scopes, addr, value)) {
-                apexErr_fatal("attempt to set an undefined local variable: %d", addr);
+                apexErr_fatal(ins->srcloc, "attempt to set an undefined local variable: %d", addr);
             }
             break;
         }
@@ -501,7 +760,7 @@ void vm_dispatch(ApexVM *vm) {
             } else if (val.type == APEX_VAL_FLT) {
                 stack_push(vm, apexVal_makeflt(-val.fltval));
             } else {
-                apexErr_runtime(ins->lineno, "cannot negate %s", get_value_type_str(val.type));
+                apexErr_runtime(vm, "cannot negate %s", get_value_type_str(val.type));
             }
             break;
         }
@@ -536,8 +795,8 @@ void vm_dispatch(ApexVM *vm) {
             return;
             
         default:
-            fprintf(stderr, "Unknown opcode: %d\n", ins->opcode);
-            exit(1);
+            apexErr_fatal(ins->srcloc, "Unknown opcode: %d\n", ins->opcode);
         }
+        
     }
 }

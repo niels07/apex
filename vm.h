@@ -3,10 +3,12 @@
 
 #define STACK_MAX 256
 #define GLOBALS_MAX 256
+#define CALL_STACK_MAX 128
 
 #include "value.h"
 #include "symbol.h"
 #include "bool.h"
+#include "srcloc.h"
 
 typedef enum {
     OP_PUSH_INT,
@@ -40,10 +42,15 @@ typedef enum {
     OP_HALT
 } OpCode;
 
-typedef union {
+typedef struct {
+    const char *fn_name;
+    SrcLoc srcloc;
+} CallFrame;
+
+typedef struct {
     OpCode opcode;
     ApexValue value;
-    int lineno;
+    SrcLoc srcloc;
 } Ins;
 
 typedef struct {
@@ -53,14 +60,17 @@ typedef struct {
 } Chunk;
 
 typedef struct {
+    CallFrame call_stack[CALL_STACK_MAX];
+    int call_stack_top;
     Bool in_function;
     Chunk *chunk;
+    Ins *ins;
     ApexValue stack[STACK_MAX];
     int stack_top;
     int ip;
     int loop_start;
     int loop_end;
-    int lineno;
+    SrcLoc srcloc;
     SymbolTable fn_table;
     SymbolTable global_table;
     ScopeStack local_scopes;

@@ -1,6 +1,8 @@
 #ifndef TOKEN_H
 #define TOKEN_H
 
+#include "srcloc.h"
+
 typedef enum {
     TOKEN_IDENT,
     TOKEN_INT,
@@ -51,7 +53,7 @@ typedef enum {
 typedef struct {
     TokenType type;
     char *value;
-    int lineno;
+    SrcLoc srcloc;
 } Token;
 
 #endif

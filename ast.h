@@ -1,6 +1,8 @@
 #ifndef AST_H
 #define AST_H
 
+#include "srcloc.h"
+
 typedef enum {
     AST_ERROR,
     AST_INT,
@@ -36,11 +38,11 @@ typedef struct AST {
     struct AST *left;
     struct AST *right;
     ASTValue value;
-    int lineno;
+    SrcLoc srcloc;
 } AST;
 
 extern void print_ast(AST *node, int indent);
-extern AST *create_ast_node(ASTNodeType type, AST *left, AST *right, ASTValue value, int lineno);
+extern AST *create_ast_node(ASTNodeType type, AST *left, AST *right, ASTValue value, SrcLoc srcloc);
 extern ASTValue ast_value_zero(void);
 extern ASTValue ast_value_str(char *str);
 extern ASTValue ast_value_ast(AST *ast);

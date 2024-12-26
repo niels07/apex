@@ -53,8 +53,8 @@ void print_ast(AST *node, int indent) {
         printf(", Value: \"%s\"", node->value.strval);
     }
 
-    if (node->lineno > 0) {
-        printf(", Line: %d", node->lineno);
+    if (node->srcloc.lineno > 0) {
+        printf(", Line: %d", node->srcloc.lineno);
     }
     printf("\n");
 
@@ -77,24 +77,29 @@ void print_ast(AST *node, int indent) {
     }
 }
 
+
 /**
- * Creates a new abstract syntax tree node with the given type and values.
+ * Creates a new abstract syntax tree node.
  *
- * @param type The type of the node.
- * @param left The left child of the node.
- * @param right The right child of the node.
- * @param value The value of the node.
- * @param lineno The line number of the node.
+ * This function allocates memory for a new abstract syntax tree node and
+ * initializes it with the given type, left and right children, value, and
+ * source location.
  *
- * @return A pointer to the created node.
+ * @param type The type of the new node.
+ * @param left The left child of the new node.
+ * @param right The right child of the new node.
+ * @param value The value associated with the new node.
+ * @param srcloc The source location of the new node.
+ *
+ * @return A pointer to the newly allocated abstract syntax tree node.
  */
-AST *create_ast_node(ASTNodeType type, AST *left, AST *right, ASTValue value, int lineno) {
+AST *create_ast_node(ASTNodeType type, AST *left, AST *right, ASTValue value, SrcLoc srcloc) {
     AST *node = mem_alloc(sizeof(AST));
     node->type = type;
     node->left = left;
     node->right = right;
     node->value = value;
-    node->lineno = lineno;
+    node->srcloc = srcloc;
     return node;
 }
 
@@ -137,14 +142,25 @@ ASTValue ast_value_ast(AST *ast) {
     return value;
 }
 
+
 /**
- * Creates an AST node representing a syntax error.
+ * Creates an abstract syntax tree node that represents an error.
  *
- * @return An AST node with its type set to AST_ERROR, value set to "error", and
- *         line number set to 0.
+ * This function creates an abstract syntax tree node of type AST_ERROR
+ * and initializes it with the string value "error". This node has no
+ * children and is used to represent a syntax error in an abstract
+ * syntax tree.
+ *
+ * @return A pointer to the newly created abstract syntax tree node that
+ *         represents an error.
  */
 AST *create_error_ast() {
-    return create_ast_node(AST_ERROR, NULL, NULL, ast_value_str("error"), 0);
+    AST *node = mem_alloc(sizeof(AST));
+    node->type = AST_ERROR;
+    node->left = NULL;
+    node->right = NULL;
+    node->value = ast_value_str("error");
+    return node;
 }
 
 /**

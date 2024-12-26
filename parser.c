@@ -71,7 +71,7 @@ static void consume(Parser *parser, TokenType type) {
         parser->current_token = get_next_token(parser->lexer);
     } else {
         apexErr_syntax(
-            parser->lexer->line, 
+            parser->lexer->srcloc, 
             "expected '%s' but found '%s'", 
             get_token_str(type), 
             parser->current_token->value);
@@ -103,7 +103,7 @@ static AST *parse_equality(Parser *parser) {
         left = create_ast_node(
             AST_BINARY_EXPR, left, right,
             ast_value_str(get_token_str(operator)), 
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
     }
 
     return left;
@@ -133,7 +133,7 @@ static AST *parse_logical(Parser *parser) {
         left = create_ast_node(
             AST_LOGICAL_EXPR, left, right, 
             ast_value_str(get_token_str(operator)),
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
     }
     return left;
 }
@@ -172,14 +172,14 @@ static AST *parse_function_call(Parser *parser) {
     AST *arguments = NULL;
 
     if (parser->current_token->type != TOKEN_IDENT) {
-        apexErr_syntax(parser->lexer->line, "Expected function name before '('.");
+        apexErr_syntax(parser->lexer->srcloc, "Expected function name before '('.");
         return create_error_ast();
     }
 
     function_name = create_ast_node(
         AST_VAR, NULL, NULL, 
         ast_value_str(parser->current_token->value),
-        parser->current_token->lineno);
+        parser->current_token->srcloc);
 
     consume(parser, TOKEN_IDENT);
 
@@ -190,12 +190,12 @@ static AST *parse_function_call(Parser *parser) {
         arguments = create_ast_node(
             AST_ARGUMENT_LIST, arguments, argument,
             ast_value_zero(),
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
         
         if (parser->current_token->type == TOKEN_COMMA) {
             consume(parser, TOKEN_COMMA);
         } else if (parser->current_token->type != TOKEN_RPAREN) {
-            apexErr_syntax(parser->lexer->line, "Expected ',' or ')' in argument list.");
+            apexErr_syntax(parser->lexer->srcloc, "Expected ',' or ')' in argument list.");
             consume(parser, parser->current_token->type);
         }
     }
@@ -204,7 +204,7 @@ static AST *parse_function_call(Parser *parser) {
     return create_ast_node(
         AST_FN_CALL, function_name, arguments,
         ast_value_zero(),
-        parser->current_token->lineno);
+        parser->current_token->srcloc);
 }
 
 /**
@@ -231,7 +231,7 @@ static AST *parse_primary(Parser *parser) {
         node = create_ast_node(
             AST_INT, NULL, NULL, 
             ast_value_str(parser->current_token->value), 
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
         consume(parser, TOKEN_INT);
         return node;
     
@@ -239,7 +239,7 @@ static AST *parse_primary(Parser *parser) {
         node = create_ast_node(
             AST_FLT, NULL, NULL, 
             ast_value_str(parser->current_token->value), 
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
         consume(parser, TOKEN_FLT);
         return node;
 
@@ -247,7 +247,7 @@ static AST *parse_primary(Parser *parser) {
         node = create_ast_node(
             AST_STR, NULL, NULL, 
             ast_value_str(parser->current_token->value), 
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
         consume(parser, TOKEN_STR);
         return node;
 
@@ -256,7 +256,7 @@ static AST *parse_primary(Parser *parser) {
         node = create_ast_node(
             AST_BOOL, NULL, NULL, 
             ast_value_str(parser->current_token->value), 
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
         consume(parser, parser->current_token->type);
         return node;
 
@@ -267,7 +267,7 @@ static AST *parse_primary(Parser *parser) {
         node = create_ast_node(
             AST_VAR, NULL, NULL, 
             ast_value_str(parser->current_token->value), 
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
         consume(parser, TOKEN_IDENT);
         return node;
     
@@ -279,7 +279,7 @@ static AST *parse_primary(Parser *parser) {
 
     default:
         apexErr_syntax(
-            parser->lexer->line, 
+            parser->lexer->srcloc, 
             "unexpected '%s' expecting %s, %s, %s, %s, %s, %s or %s", 
             parser->current_token->value,
             get_token_str(TOKEN_INT), 
@@ -319,7 +319,7 @@ static AST *parse_unary(Parser *parser) {
             AST_UNARY_EXPR, NULL, 
             parse_primary(parser), 
             ast_value_str(new_string("++", 2)), 
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
     }
     if (parser->current_token->type == TOKEN_MINUS_MINUS) {
         consume(parser, TOKEN_MINUS_MINUS);
@@ -327,7 +327,7 @@ static AST *parse_unary(Parser *parser) {
             AST_UNARY_EXPR, NULL, 
             parse_primary(parser), 
             ast_value_str(new_string("--", 2)), 
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
     }
     return parse_primary(parser);
 }
@@ -356,7 +356,7 @@ static AST *parse_factor(Parser *parser) {
         left = create_ast_node(
             AST_BINARY_EXPR, left, right, 
             ast_value_str(get_token_str(operator)),
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
     }
     return left;
 }
@@ -385,7 +385,7 @@ static AST *parse_bitwise(Parser *parser) {
         left = create_ast_node(
             AST_BINARY_EXPR, left, right, 
             ast_value_str(get_token_str(operator)),
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
     }
     return left;
 }
@@ -414,7 +414,7 @@ static AST *parse_term(Parser *parser) {
         left = create_ast_node(
             AST_BINARY_EXPR, left, right,
             ast_value_str(get_token_str(operator)),
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
     }
     return left;
 }
@@ -447,7 +447,7 @@ static AST *parse_comparison(Parser *parser) {
         left = create_ast_node(
             AST_BINARY_EXPR, left, right, 
             ast_value_str(get_token_str(token_type)),
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
         token_type = parser->current_token->type;
     }
     return left;
@@ -468,14 +468,14 @@ static AST *parse_assignment(Parser *parser) {
     AST *left;
 
     if (parser->current_token->type != TOKEN_IDENT) {
-        apexErr_syntax(parser->lexer->line, "Invalid assignment target");
+        apexErr_syntax(parser->lexer->srcloc, "invalid assignment target");
         return create_error_ast();
     }
 
     left = create_ast_node(
         AST_VAR, NULL, NULL, 
         ast_value_str(parser->current_token->value),
-        parser->current_token->lineno);
+        parser->current_token->srcloc);
 
     consume(parser, TOKEN_IDENT);
 
@@ -494,7 +494,7 @@ static AST *parse_assignment(Parser *parser) {
         return create_ast_node(
             AST_ASSIGNMENT, left, value,
             ast_value_str(operator_str),
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
     }
     return left;
 }
@@ -518,7 +518,7 @@ static AST *parse_assignment(Parser *parser) {
 static AST *parse_block(Parser *parser) {
     AST *first_stmt = NULL;
     AST *last_stmt = NULL;
-    int lineno = parser->current_token->lineno;
+    SrcLoc srcloc = parser->current_token->srcloc;
 
     consume(parser, TOKEN_LBRACE);
 
@@ -539,7 +539,7 @@ static AST *parse_block(Parser *parser) {
     }
 
     consume(parser, TOKEN_RBRACE);
-    return create_ast_node(AST_BLOCK, first_stmt, NULL, ast_value_zero(), lineno);
+    return create_ast_node(AST_BLOCK, first_stmt, NULL, ast_value_zero(), srcloc);
 }
 
 /**
@@ -563,7 +563,7 @@ static AST *parse_if_statement(Parser *parser) {
     AST *then_branch = NULL;
     AST *else_branch = NULL;
     AST *current_else = NULL;
-    int lineno = parser->current_token->lineno;
+    SrcLoc srcloc = parser->current_token->srcloc;
 
     consume(parser, TOKEN_IF);
     consume(parser, TOKEN_LPAREN);
@@ -595,7 +595,7 @@ static AST *parse_if_statement(Parser *parser) {
         elif_node = create_ast_node(
             AST_IF, elif_condition, elif_then_branch,
             ast_value_zero(),
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
 
         if (current_else) {
             current_else->value.ast_node = elif_node;
@@ -603,7 +603,7 @@ static AST *parse_if_statement(Parser *parser) {
             else_branch = elif_node;
         } else {
             apexErr_syntax(
-                parser->lexer->line, 
+                parser->lexer->srcloc, 
                 "unexpected 'elif' without a preceding if/else");
         }
 
@@ -628,7 +628,7 @@ static AST *parse_if_statement(Parser *parser) {
     return create_ast_node(
         AST_IF, condition, then_branch,
         ast_value_ast(else_branch),
-        lineno);
+        srcloc);
 }
 
 /**
@@ -662,7 +662,7 @@ static AST *parse_while_statement(Parser *parser) {
     return create_ast_node(
         AST_WHILE, condition, body,
         ast_value_zero(),
-        parser->current_token->lineno);
+        parser->current_token->srcloc);
 }
 
 /**
@@ -712,9 +712,9 @@ static AST *parse_for_statement(Parser *parser) {
             create_ast_node(
                 AST_BLOCK, increment, body,
                 ast_value_zero(),
-                parser->current_token->lineno)
+                parser->current_token->srcloc)
         ),
-        parser->current_token->lineno
+        parser->current_token->srcloc
     );
 }
 
@@ -745,7 +745,7 @@ static AST *parse_return_statement(Parser *parser) {
     return create_ast_node(
         AST_RETURN, expression, NULL,
         ast_value_zero(),
-        parser->current_token->lineno);
+        parser->current_token->srcloc);
 }
 
 /**
@@ -770,18 +770,18 @@ static AST *parse_function_declaration(Parser *parser) {
     AST *name = NULL;
     AST *parameters = NULL;
     AST *body = NULL;
-    int start_line = parser->current_token->lineno;
+    SrcLoc srcloc = parser->current_token->srcloc;
 
     consume(parser, TOKEN_FN);
     
     if (parser->current_token->type != TOKEN_IDENT) {
-        apexErr_syntax(parser->lexer->line, "expected function name after 'fn'");
+        apexErr_syntax(parser->lexer->srcloc, "expected function name after 'fn'");
     }
 
     name = create_ast_node(
         AST_VAR, NULL, NULL,
         ast_value_str(parser->current_token->value),
-        parser->current_token->lineno);
+        parser->current_token->srcloc);
 
     consume(parser, TOKEN_IDENT);    
     consume(parser, TOKEN_LPAREN);
@@ -790,18 +790,18 @@ static AST *parse_function_declaration(Parser *parser) {
         AST *param;
 
         if (parser->current_token->type != TOKEN_IDENT) {
-            apexErr_syntax(parser->lexer->line, "expected parameter name");
+            apexErr_syntax(parser->lexer->srcloc, "expected parameter name");
         }
 
         param = create_ast_node(
             AST_VAR, NULL, NULL,
             ast_value_str(parser->current_token->value),
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
 
         parameters = create_ast_node(
             AST_PARAMETER_LIST, param, parameters,
             ast_value_zero(),
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
 
         consume(parser, TOKEN_IDENT);
         
@@ -815,7 +815,7 @@ static AST *parse_function_declaration(Parser *parser) {
     return create_ast_node(
         AST_FN_DECL, name, body, 
         ast_value_ast(parameters),
-        start_line);
+        srcloc);
 }
 
 /**
@@ -833,7 +833,7 @@ static AST *parse_function_declaration(Parser *parser) {
 static AST *parse_statement(Parser *parser) {
     AST *statement = NULL;
     Token next_token;
-    int lineno = parser->current_token->lineno;
+    SrcLoc srcloc = parser->current_token->srcloc;
 
     switch (parser->current_token->type) {
     case TOKEN_IF:
@@ -881,7 +881,7 @@ static AST *parse_statement(Parser *parser) {
         statement = create_ast_node(
             AST_CONTINUE, NULL, NULL, 
             ast_value_zero(), 
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
         consume(parser, TOKEN_SEMICOLON);
         break;
 
@@ -890,7 +890,7 @@ static AST *parse_statement(Parser *parser) {
         statement = create_ast_node(
             AST_BREAK, NULL, NULL, 
             ast_value_zero(), 
-            parser->current_token->lineno);
+            parser->current_token->srcloc);
         consume(parser, TOKEN_SEMICOLON);
         break;
         
@@ -904,7 +904,7 @@ static AST *parse_statement(Parser *parser) {
         statement = create_ast_node(
             AST_STATEMENT, statement, NULL,
             ast_value_zero(),
-            lineno);
+            srcloc);
     }
 
     return statement;

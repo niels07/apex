@@ -42,19 +42,19 @@ void apex_int(ApexVM *vm) {
             apexVM_pushint(vm, i);
         } else {
             apexErr_fatal(
-                "cannot convert string \"%s\" to int on line %d", 
-                value.strval,
-                vm->lineno);
+                vm->ins->srcloc,
+                "cannot convert string \"%s\" to int", 
+                value.strval);
         }
         break;
     }
 
     case APEX_VAL_FN: 
-        apexErr_fatal("cannot convert fn to int");
+        apexErr_fatal(vm->ins->srcloc, "cannot convert fn to int");
         break;
 
     case APEX_VAL_NULL:
-        apexErr_fatal("cannot convert null to int");
+        apexErr_fatal(vm->ins->srcloc, "cannot convert null to int");
         break;
     }
 }
@@ -82,9 +82,9 @@ void apex_flt(ApexVM *vm) {
             apexVM_pushflt(vm, f);
         } else {
             apexErr_fatal(
-                "cannot convert string \"%s\" to flt on line %d", 
-                value.strval,
-                vm->lineno);
+                vm->ins->srcloc,
+                "cannot convert string \"%s\" to flt", 
+                value.strval);
         }
         break;
     }
@@ -94,11 +94,11 @@ void apex_flt(ApexVM *vm) {
         break;
 
     case APEX_VAL_FN: 
-        apexErr_fatal("cannot convert fn to flt");
+        apexErr_fatal(vm->ins->srcloc, "cannot convert fn to flt");
         break;
 
     case APEX_VAL_NULL:
-        apexErr_fatal("cannot convert null to flt");
+        apexErr_fatal(vm->ins->srcloc, "cannot convert null to flt");
         break;
     }
 }

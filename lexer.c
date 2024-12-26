@@ -140,39 +140,47 @@ char *get_token_str(TokenType type) {
     return new_string(tk2str[type].str, tk2str[type].len);
 }
 
+
 /**
- * Initializes a Lexer with the provided source code.
+ * Initializes a Lexer with the given source code and filename.
  *
- * This function sets up the Lexer structure by assigning the source code,
- * calculating its length, and initializing the current position and line
- * number. It also ensures that global lexer-related variables are initialized.
+ * This function sets up the Lexer by assigning it the given source code
+ * and filename, and initializing its position to 0 and its line number to
+ * 1.
  *
  * @param lexer A pointer to the Lexer structure to initialize.
- * @param source A pointer to the source code string to be tokenized.
+ * @param filename The name of the file being parsed, or NULL if the source
+ *                 code is not from a file.
+ * @param source The source code to parse.
  */
-void init_lexer(Lexer *lexer, const char *source) {
+void init_lexer(Lexer *lexer, const char *filename, const char *source) {
     if (!globals_initialized) {
         init_lexer_globals();
     }
     lexer->source = source;
     lexer->length = strlen(source);
     lexer->position = 0;
-    lexer->line = 1;
+    lexer->srcloc.lineno = 1;
+    lexer->srcloc.filename = filename;
 }
 
 /**
- * Creates a new Token structure with the given type, value, and line number.
+ * Creates a new Token with the specified type and value.
  *
- * @param type The type of the token.
- * @param value The value of the token, or NULL if the token has no value.
- * @param lineno The line number of the token.
+ * This function allocates memory for a new Token structure and
+ * initializes its fields with the provided type and value, along
+ * with the source location from the given Lexer.
+ *
+ * @param lexer A pointer to the Lexer structure providing the source location.
+ * @param type The type of the token to be created.
+ * @param value The value of the token as a string.
  * @return A pointer to the newly created Token structure.
  */
-Token *create_token(TokenType type, char *value, int lineno) {
+Token *create_token(Lexer *lexer, TokenType type, char *value) {
     Token *token = mem_alloc(sizeof(Token));
     token->type = type;
     token->value = value;
-    token->lineno = lineno;
+    token->srcloc = lexer->srcloc;;
     return token;
 }
 
@@ -236,7 +244,7 @@ static char advance(Lexer *lexer) {
 static void skip_whitespace(Lexer *lexer) {
     while (isspace(peek(lexer))) {
         if (peek(lexer) == '\n') {
-            lexer->line++;
+            lexer->srcloc.lineno++;
         }
         advance(lexer);
     }
@@ -295,7 +303,7 @@ static Token *scan_num(Lexer *lexer) {
 
     len = lexer->position - start;
     num = new_string(lexer->source + start, len);
-    return create_token(token_type, num, lexer->line);
+    return create_token(lexer, token_type, num);
 }
 
 /**
@@ -324,29 +332,29 @@ static Token *scan_ident(Lexer *lexer) {
     ident = new_string(lexer->source + start, len);
 
     if (ident == IF_STR) {
-        return create_token(TOKEN_IF, ident, lexer->line);
+        return create_token(lexer, TOKEN_IF, ident);
     } else if (ident == ELIF_STR) {
-        return create_token(TOKEN_ELIF, ident, lexer->line);
+        return create_token(lexer, TOKEN_ELIF, ident);
     } else if (ident == ELSE_STR) {
-        return create_token(TOKEN_ELSE, ident, lexer->line);
+        return create_token(lexer, TOKEN_ELSE, ident);
     } else if (ident == FN_STR) {
-        return create_token(TOKEN_FN, ident, lexer->line);
+        return create_token(lexer, TOKEN_FN, ident);
     } else if (ident == FOR_STR) {
-        return create_token(TOKEN_FOR, ident, lexer->line);
+        return create_token(lexer, TOKEN_FOR, ident);
     } else if (ident == WHILE_STR) {
-        return create_token(TOKEN_WHILE, ident, lexer->line);
+        return create_token(lexer, TOKEN_WHILE, ident);
     } else if (ident == TRUE_STR)  {
-        return create_token(TOKEN_TRUE, ident, lexer->line);
+        return create_token(lexer, TOKEN_TRUE, ident);
     } else if (ident == FALSE_STR) {
-        return create_token(TOKEN_FALSE, ident, lexer->line);
+        return create_token(lexer, TOKEN_FALSE, ident);
     } else if (ident == RETURN_STR) {
-        return create_token(TOKEN_RETURN, ident, lexer->line);
+        return create_token(lexer, TOKEN_RETURN, ident);
     } else if (ident == BREAK_STR) {
-        return create_token(TOKEN_BREAK, ident, lexer->line);
+        return create_token(lexer, TOKEN_BREAK, ident);
     } else if (ident == CONTINUE_STR) {
-        return create_token(TOKEN_CONTINUE, ident, lexer->line);
+        return create_token(lexer, TOKEN_CONTINUE, ident);
     }
-    return create_token(TOKEN_IDENT, ident, lexer->line);
+    return create_token(lexer, TOKEN_IDENT, ident);
 }
 
 /**
@@ -378,7 +386,7 @@ static Token *scan_str(Lexer *lexer) {
     
     len = lexer->position - start - 1;
     str = new_string(lexer->source + start, len);
-    return create_token(TOKEN_STR, str, lexer->line);
+    return create_token(lexer, TOKEN_STR, str);
 }
 
 /**
@@ -403,7 +411,7 @@ Token *get_next_token(Lexer *lexer) {
     skip_comments(lexer);
 
     if (lexer->position >= lexer->length) {
-        return create_token(TOKEN_EOF, new_string("EOF", 3), lexer->line);
+        return create_token(lexer, TOKEN_EOF, new_string("EOF", 3));
     }
 
     c = advance(lexer);
@@ -423,152 +431,126 @@ Token *get_next_token(Lexer *lexer) {
         if (peek(lexer) == '=') {
             advance(lexer);
             return create_token(
-                TOKEN_EQUAL_EQUAL, 
-                (char *)EQUAL_EQUAL_STR, 
-                lexer->line);
+                lexer, TOKEN_EQUAL_EQUAL, 
+                (char *)EQUAL_EQUAL_STR);
         } 
         return create_token(
-            TOKEN_EQUAL,
-            (char *)EQUAL_STR,
-            lexer->line);      
+            lexer, TOKEN_EQUAL,
+            (char *)EQUAL_STR);      
     case '+':
         if (peek(lexer) == '+') {
             advance(lexer);
             return create_token(
-                TOKEN_PLUS_PLUS,
-                (char *)PLUS_PLUS_STR,
-                lexer->line);
+                lexer, TOKEN_PLUS_PLUS,
+                (char *)PLUS_PLUS_STR);
         } else if (peek(lexer) == '=') {
             advance(lexer);
             return create_token(
-                TOKEN_PLUS_EQUAL, 
-                (char *)PLUS_EQUAL_STR, 
-                lexer->line);
+                lexer, TOKEN_PLUS_EQUAL, 
+                (char *)PLUS_EQUAL_STR);
         }
         return create_token(
-            TOKEN_PLUS,
-            (char *)PLUS_STR,
-            lexer->line);
+            lexer, TOKEN_PLUS,
+            (char *)PLUS_STR);
     case '-':
         if (peek(lexer) == '-') {
             advance(lexer);
             return create_token(
-                TOKEN_MINUS_MINUS,
-                (char *)MINUS_MINUS_STR,
-                lexer->line);
+                lexer, TOKEN_MINUS_MINUS,
+                (char *)MINUS_MINUS_STR);
         } else if (peek(lexer) == '=') {
             advance(lexer);
             return create_token(
-                TOKEN_MINUS_EQUAL,
-                (char *)MINUS_EQUAL_STR,
-                lexer->line);
+                lexer, TOKEN_MINUS_EQUAL,
+                (char *)MINUS_EQUAL_STR);
         }
         return create_token(
-            TOKEN_MINUS, 
-            (char *)MINUS_STR, 
-            lexer->line);
+            lexer, TOKEN_MINUS, 
+            (char *)MINUS_STR);
     case '*': 
         return create_token(
-            TOKEN_STAR, 
-            (char *)STAR_STR, 
-            lexer->line);
+            lexer, TOKEN_STAR, 
+            (char *)STAR_STR);
     case '/': 
         return create_token(
-            TOKEN_SLASH, 
-            (char *)SLASH_STR, 
-            lexer->line);
+            lexer, TOKEN_SLASH, 
+            (char *)SLASH_STR);
     case '(': 
         return create_token(
-            TOKEN_LPAREN, 
-            (char *)LPAREN_STR, 
-            lexer->line);
+            lexer, TOKEN_LPAREN, 
+            (char *)LPAREN_STR);
     case ')': 
         return create_token(
-            TOKEN_RPAREN, 
-            (char *)RPAREN_STR, 
-            lexer->line);
+            lexer, TOKEN_RPAREN, 
+            (char *)RPAREN_STR);
     case '{': 
         return create_token(
-            TOKEN_LBRACE, 
-            (char *)LBRACE_STR, 
-            lexer->line);
+            lexer, TOKEN_LBRACE, 
+            (char *)LBRACE_STR);
     case '}': 
         return create_token(
-            TOKEN_RBRACE, 
-            (char *)RBRACE_STR, 
-            lexer->line);
+            lexer, TOKEN_RBRACE, 
+            (char *)RBRACE_STR);
     case ',': 
         return create_token(
-            TOKEN_COMMA, 
-            (char *)COMMA_STR, 
-            lexer->line);
+            lexer, TOKEN_COMMA, 
+            (char *)COMMA_STR);
     case ';': 
         return create_token(
-            TOKEN_SEMICOLON, 
-            (char *)SEMICOLON_STR, 
-            lexer->line);
+            lexer, TOKEN_SEMICOLON, 
+            (char *)SEMICOLON_STR);
     case '<':
         if (peek(lexer) == '=') {
             advance(lexer);
             return create_token(
-                TOKEN_LESS_EQUAL, 
-                (char *)LESS_EQUAL_STR, 
-                lexer->line);
+                lexer, TOKEN_LESS_EQUAL, 
+                (char *)LESS_EQUAL_STR);
         }
         return create_token(
-            TOKEN_LESS, 
-            (char *)LESS_STR, 
-            lexer->line);
+            lexer, TOKEN_LESS, 
+            (char *)LESS_STR);
     case '>':
         if (peek(lexer) == '=') {
             advance(lexer);
             return create_token(
-                TOKEN_GREATER_EQUAL, 
-                (char *)GREATER_EQUAL_STR, 
-                lexer->line);
+                lexer, TOKEN_GREATER_EQUAL, 
+                (char *)GREATER_EQUAL_STR);
         }
         return create_token(
-            TOKEN_GREATER, 
-            (char *)GREATER_STR, 
-            lexer->line);    
+            lexer, TOKEN_GREATER, 
+            (char *)GREATER_STR);    
     case '!': 
         if (peek(lexer) == '=') {
             advance(lexer);
             return create_token(
-                TOKEN_NOT_EQUAL, 
-                (char *)NOT_EQUAL_STR, 
-                lexer->line);
+                lexer, TOKEN_NOT_EQUAL, 
+                (char *)NOT_EQUAL_STR);
         }
         return create_token(
-            TOKEN_NOT, 
-            (char *)NOT_STR, 
-            lexer->line);
+            lexer, TOKEN_NOT, 
+            (char *)NOT_STR);
     case '&':
         if (peek(lexer) == '&') {
             advance(lexer);
             return create_token(
-                TOKEN_AND, 
-                (char *)AND_STR, 
-                lexer->line);
+                lexer, TOKEN_AND, 
+                (char *)AND_STR);
         }
         return create_token(
-            TOKEN_AMP, 
-            (char *)AMP_STR, 
-            lexer->line);
+            lexer, TOKEN_AMP, 
+            (char *)AMP_STR);
     case '|':
         if (peek(lexer) == '|') {
             advance(lexer);
             return create_token(
-                TOKEN_OR, 
-                (char *)OR_STR, 
-                lexer->line);
+                lexer, TOKEN_OR, 
+                (char *)OR_STR);
         }
         return create_token(
-            TOKEN_PIPE, 
-            (char *)PIPE_STR, 
-            lexer->line);
+            lexer, TOKEN_PIPE, 
+            (char *)PIPE_STR);
     }
 
-    apexErr_syntax(lexer->line, "Unexpected character: %c", c);
+    apexErr_syntax(lexer->srcloc, "Unexpected character: '%c'", c);
     return NULL;
 }
