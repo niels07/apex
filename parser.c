@@ -846,7 +846,6 @@ static AST *parse_for_statement(Parser *parser) {
     AST *increment = NULL;
     AST *body = NULL;
 
-    printf("parsing for statement\n");
     consume(parser, TOKEN_FOR);
     consume(parser, TOKEN_LPAREN);
 
@@ -862,7 +861,6 @@ static AST *parse_for_statement(Parser *parser) {
     consume(parser, TOKEN_SEMICOLON);
     
     if (parser->current_token->type != TOKEN_RPAREN) {
-        printf("parsing increment\n");
         increment = parse_expression(parser);
     }
     consume(parser, TOKEN_RPAREN);
