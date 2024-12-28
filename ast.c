@@ -28,6 +28,9 @@ static const char *get_ast_node_type_name(ASTNodeType type) {
         case AST_STATEMENT: return "AST_STATEMENT";
         case AST_BREAK: return "AST_BREAK";
         case AST_CONTINUE: return "AST_CONTINUE";
+        case AST_ARRAY: return "AST_ARRAY";
+        case AST_ARRAY_ACCESS: return "AST_ARRAY_ACCESS";
+        case AST_KEY_VALUE_PAIR: return "AST_KEY_VALUE_PAIR";
         default: return "UNKNOWN_AST_NODE_TYPE";
     }
 }
@@ -49,7 +52,7 @@ void print_ast(AST *node, int indent) {
     print_indent(indent);
     printf("Node Type: %s (%d)", get_ast_node_type_name(node->type), node->type);
     
-    if (node->value.strval != NULL && node->type != AST_FN_DECL && node->type != AST_IF) {
+    if (node->value.strval != NULL && node->type != AST_FN_DECL && node->type != AST_IF && node->type != AST_FOR) {
         printf(", Value: \"%s\"", node->value.strval);
     }
 
@@ -70,7 +73,7 @@ void print_ast(AST *node, int indent) {
         print_ast(node->right, indent + 1);
     }
 
-    if (node->type == AST_FN_DECL || node->type == AST_IF) {
+    if (node->type == AST_FN_DECL || node->type == AST_IF || node->type == AST_FOR) {
         print_indent(indent);
         printf("Value:\n");
         print_ast(node->value.ast_node, indent + 1);

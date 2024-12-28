@@ -15,6 +15,11 @@
         "tuple": "c",
         "utility": "c",
         "random": "c",
-        "compare": "c"
+        "compare": "c",
+        "vector": "c",
+        "hashtable.h": "c",
+        "array.h": "c",
+        "util.h": "c",
+        "stdio.h": "c"
     }
 }

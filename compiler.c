@@ -128,7 +128,7 @@ static void compile_variable(ApexVM *vm, AST *node, Bool is_assignment) {
     if (node->type != AST_VAR) {
         return;
     }
-
+    printf("compiling variable %s\n", var_name);
     addr = get_local_symbol_address(&vm->local_scopes, var_name);
 
     if (addr != -1) {
@@ -234,6 +234,66 @@ static const char **compile_parameter_list(ApexVM *vm, AST *param_list, int *par
 }
 
 /**
+ * Compiles an AST node representing an array to bytecode.
+ *
+ * This function iterates through the elements of the array, compiling each
+ * expression and emitting an instruction to create a key-value pair or
+ * element in the array. It then emits an instruction to create the array with
+ * the correct element count.
+ *
+ * @param vm A pointer to the virtual machine structure containing the
+ *           instruction chunk.
+ * @param node The AST node representing the array to be compiled.
+ */
+static void compile_array(ApexVM *vm, AST *node) {
+    int element_count = 0;
+    UPDATE_SRCLOC(vm, node);
+
+    AST *current = node->right;
+    while (current) {
+        if (current->type == AST_KEY_VALUE_PAIR) {
+            compile_expression(vm, current->left);
+            compile_expression(vm, current->right);
+        } else {
+            EMIT_OP_INT(vm, OP_PUSH_INT, element_count); 
+            compile_expression(vm, current);
+        }
+        element_count++;
+        current = current->right;
+    }
+
+    EMIT_OP_INT(vm, OP_CREATE_ARRAY, element_count);
+}
+
+/**
+ * Compiles an AST node representing an array access to bytecode.
+ *
+ * This function compiles the array and index expressions, and emits the
+ * appropriate bytecode instruction to either get or set an element in the
+ * array, depending on the value of is_assignment.
+ *
+ * @param vm A pointer to the virtual machine structure containing the
+ *           instruction chunk.
+ * @param node The AST node representing the array access to be compiled.
+ * @param is_assignment A boolean indicating whether the access is an
+ *                      assignment. If true, an instruction to set the element
+ *                      is emitted. If false, an instruction to get the element
+ *                      is emitted.
+ */
+static void compile_array_access(ApexVM *vm, AST *node, Bool is_assignment) {
+    UPDATE_SRCLOC(vm, node);
+
+    compile_expression(vm, node->left);
+    compile_expression(vm, node->right);
+
+    if (is_assignment) {
+        EMIT_OP(vm, OP_SET_ELEMENT);
+    } else {
+        EMIT_OP(vm, OP_GET_ELEMENT);
+    }
+}
+
+/**
  * Compiles an AST node representing an argument list to bytecode.
  *
  * This function recursively traverses the argument list, compiling each
@@ -313,7 +373,7 @@ static void compile_function_call(ApexVM *vm, AST *node) {
     const char *fn_name = node->left->value.strval;
     int fn_addr;
     int i;
-
+    
     UPDATE_SRCLOC(vm, node);
 
     for (i = 0; apex_stdlib[i].name; i++) {
@@ -332,6 +392,32 @@ static void compile_function_call(ApexVM *vm, AST *node) {
 
     compile_argument_list(vm, node->right);
     EMIT_OP_INT(vm, OP_CALL, fn_addr);
+}
+
+/**
+ * Compiles an AST node representing an assignment to bytecode.
+ *
+ * This function handles assignments to variables and array elements. For array
+ * assignments, it compiles the array access or array creation as needed. It then
+ * compiles the right-hand side expression of the assignment and emits the
+ * appropriate bytecode to store the result in the target variable or array element.
+ *
+ * @param vm A pointer to the virtual machine structure containing the
+ *           instruction chunk and symbol tables.
+ * @param node The AST node representing the assignment expression to be compiled.
+ */
+static void compile_assignment(ApexVM *vm, AST *node) {
+    UPDATE_SRCLOC(vm, node);
+
+    if (node->left->type == AST_ARRAY_ACCESS) {
+        compile_array_access(vm, node->left, TRUE);
+    } else if (node->right->type == AST_ARRAY) {
+        compile_array(vm, node->right);
+        compile_variable(vm, node->left, TRUE);
+    } else {
+        compile_expression(vm, node->right); 
+        compile_variable(vm, node->left, TRUE);
+    }
 }
 
 /**
@@ -371,36 +457,51 @@ static void compile_expression(ApexVM *vm, AST *node) {
         compile_expression(vm, node->right);
         if (strcmp(node->value.strval, "+") == 0) {
             EMIT_OP(vm, OP_ADD);
-        } else if (node->value.strval == new_string("+", 1)) {
+        } else if (node->value.strval == apexStr_new("+", 1)) {
             EMIT_OP(vm, OP_ADD);
-        } else if (node->value.strval == new_string("-", 1)) {
+        } else if (node->value.strval == apexStr_new("-", 1)) {
             EMIT_OP(vm, OP_SUB);
-        } else if (node->value.strval == new_string("*", 1)) {
+        } else if (node->value.strval == apexStr_new("*", 1)) {
             EMIT_OP(vm, OP_MUL);
-        } else if (node->value.strval == new_string("/", 1)) {
+        } else if (node->value.strval == apexStr_new("/", 1)) {
             EMIT_OP(vm, OP_DIV);
-        } else if (node->value.strval == new_string("==", 2)) {
+        } else if (node->value.strval == apexStr_new("==", 2)) {
             EMIT_OP(vm, OP_EQ);
-        } else if (node->value.strval == new_string("!=", 2)) {
+        } else if (node->value.strval == apexStr_new("!=", 2)) {
             EMIT_OP(vm, OP_NE);
-        } else if (node->value.strval == new_string("<", 1)) {
+        } else if (node->value.strval == apexStr_new("<", 1)) {
             EMIT_OP(vm, OP_LT);
-        } else if (node->value.strval == new_string("<=", 2)) {
+        } else if (node->value.strval == apexStr_new("<=", 2)) {
             EMIT_OP(vm, OP_LE);
-        } else if (node->value.strval == new_string(">", 1)) {
+        } else if (node->value.strval == apexStr_new(">", 1)) {
             EMIT_OP(vm, OP_GT);
-        } else if (node->value.strval == new_string(">=", 2)) {
+        } else if (node->value.strval == apexStr_new(">=", 2)) {
             EMIT_OP(vm, OP_GE);
         }
         break;
 
     case AST_UNARY_EXPR:
-        compile_expression(vm, node->right);
-        if (strcmp(node->value.strval, "!") == 0){
-            EMIT_OP(vm, OP_NOT);
+        if (node->right) {
+            compile_expression(vm, node->right);
+        } else if (node->left) {
+            compile_expression(vm, node->left);
         }
-        if (strcmp(node->value.strval, "-") == 0) {
+        if (node->value.strval == apexStr_new("!", 1)) {
+            EMIT_OP(vm, OP_NOT);
+        } else if (node->value.strval == apexStr_new("-", 1)) {
             EMIT_OP(vm, OP_NEGATE);
+        } else if (node->value.strval == apexStr_new("++", 2)) {
+            EMIT_OP_INT(vm, OP_PUSH_INT, 1);
+            EMIT_OP(vm, OP_ADD);
+            if (node->left && node->left->type == AST_VAR) {
+                compile_variable(vm, node->left, TRUE);
+            }
+        } else if (node->value.strval == apexStr_new("--", 2)) {
+            EMIT_OP_INT(vm, OP_PUSH_INT, 1);
+            EMIT_OP(vm, OP_SUB);
+            if (node->left && node->left->type == AST_VAR) {
+                compile_variable(vm, node->left, TRUE);
+            }
         }
         break;
 
@@ -409,7 +510,7 @@ static void compile_expression(ApexVM *vm, AST *node) {
         int end_jmp;
         compile_expression(vm, node->left);
 
-        if (node->value.strval == new_string("&&", 2)) {
+        if (node->value.strval == apexStr_new("&&", 2)) {
             EMIT_OP(vm, OP_JUMP_IF_FALSE);
             short_circuit_jmp = vm->chunk->ins_n - 1;
             compile_expression(vm, node->right);
@@ -418,7 +519,7 @@ static void compile_expression(ApexVM *vm, AST *node) {
             vm->chunk->ins[short_circuit_jmp].value.intval = vm->chunk->ins_n - short_circuit_jmp - 1;
             EMIT_OP_BOOL(vm, OP_PUSH_BOOL, FALSE);
             vm->chunk->ins[end_jmp].value.intval = vm->chunk->ins_n - end_jmp - 1;
-        } else if (node->value.strval == new_string("||", 2)) {
+        } else if (node->value.strval == apexStr_new("||", 2)) {
             EMIT_OP(vm, OP_JUMP_IF_FALSE);
             short_circuit_jmp = vm->chunk->ins_n - 1;
             compile_expression(vm, node->right);
@@ -426,15 +527,22 @@ static void compile_expression(ApexVM *vm, AST *node) {
             EMIT_OP_BOOL(vm, OP_PUSH_BOOL, TRUE);
         }
         break;
-        
     }
+
     case AST_VAR:
         compile_variable(vm, node, FALSE);
         break;
 
+    case AST_ARRAY:
+        compile_array(vm, node);
+        break;
+
+    case AST_ARRAY_ACCESS:
+        compile_array_access(vm, node, FALSE);
+        break;
+
     case AST_ASSIGNMENT:
-        compile_expression(vm, node->right);
-        compile_variable(vm, node->left, TRUE);
+        compile_assignment(vm, node);
         break;
 
     case AST_FN_CALL: 
@@ -543,19 +651,19 @@ static void compile_statement(ApexVM *vm, AST *node) {
 
     case AST_FOR: 
         compile_statement(vm, node->left);
-        compile_loop(vm, node->right->left, node->right->right, node->right->left);
+        compile_loop(vm, node->right, node->value.ast_node->right, node->value.ast_node->left);
         break;
         
     case AST_CONTINUE:
         if (vm->loop_start == -1) {
-            apexErr_fatal(node->srcloc, "Invalid 'continue' outside of loop on line %d");
+            apexErr_fatal(node->srcloc, "invalid 'continue' outside of loop on line %d");
         }
         EMIT_OP_INT(vm, OP_JUMP, vm->loop_start - vm->chunk->ins_n - 1);
         break;
 
     case AST_BREAK:
         if (vm->loop_end == -1) {
-            apexErr_fatal(node->srcloc,"Invalid 'break' outside of loop on line %d");
+            apexErr_fatal(node->srcloc,"invalid 'break' outside of loop on line %d");
         }
         EMIT_OP_INT(vm, OP_JUMP, vm->loop_end - vm->chunk->ins_n - 1);
         break;

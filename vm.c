@@ -19,6 +19,9 @@ static const char *opcode_to_string(OpCode opcode) {
         case OP_PUSH_FLT: return "OP_PUSH_FLT";
         case OP_PUSH_STR: return "OP_PUSH_STR";
         case OP_PUSH_BOOL: return "OP_PUSH_BOOL";
+        case OP_CREATE_ARRAY: return "OP_CREATE_ARRAY";
+        case OP_SET_ELEMENT: return "OP_SET_ELEMENT";
+        case OP_GET_ELEMENT: return "OP_GET_ELEMENT";
         case OP_POP: return "OP_POP";
         case OP_ADD: return "OP_ADD";
         case OP_SUB: return "OP_SUB";
@@ -44,8 +47,8 @@ static const char *opcode_to_string(OpCode opcode) {
         case OP_GT: return "OP_GT";
         case OP_GE: return "OP_GE";
         case OP_HALT: return "OP_HALT";
-        default: return "UNKNOWN_OPCODE";
     }
+    return "Unknown opcode";
 }
 
 void print_vm_instructions(ApexVM *vm) {
@@ -180,7 +183,6 @@ static void push_callframe(ApexVM *vm, const char *fn_name, SrcLoc srcloc) {
     if (vm->call_stack_top >= CALL_STACK_MAX) {
         apexErr_fatal(srcloc, "Call stack overflow!");
     }
-    printf("pusing callframe: %s at %d\n", fn_name, srcloc.lineno);
     vm->call_stack[vm->call_stack_top++] = create_callframe(fn_name, srcloc);
 }
 
@@ -201,8 +203,40 @@ static void pop_callframe(ApexVM *vm, SrcLoc srcloc) {
     if (vm->call_stack_top == 0) {
         apexErr_fatal(srcloc, "call stack underflow!");
     }
-    printf("popping callframe: %s\n", vm->call_stack[vm->call_stack_top - 1].fn_name);
     vm->call_stack_top--;
+}
+
+
+/**
+ * Increments the reference count of a value if it is an array.
+ *
+ * If the value is not an array, this function does nothing.
+ *
+ * @param value The value to increment the reference count of.
+ */
+static void increment_reference(ApexValue value) {
+    if (value.type == APEX_VAL_ARR) {
+        value.refcount++;
+    }
+}
+
+/**
+ * Decrements the reference count of a value if it is an array, and frees
+ * the array if the reference count reaches zero.
+ *
+ * This function checks if the given value is of type array. If it is, it
+ * decrements the reference count. If the reference count becomes zero or
+ * negative, the memory allocated for the array is freed.
+ *
+ * @param value The value whose reference count will be decremented.
+ */
+static void decrement_reference(ApexValue value) {
+    if (value.type == APEX_VAL_ARR) {
+        value.refcount--;
+        if (value.refcount <= 0) {
+            apexVal_freearray(value.arrval);          
+        }
+    }
 }
 
 /**
@@ -237,6 +271,7 @@ static void stack_push(ApexVM *vm, ApexValue value) {
     if (vm->stack_top >= STACK_MAX) {
         apexErr_runtime(vm, "Stack overflow\n");
     }
+    increment_reference(value);
     vm->stack[vm->stack_top++] = value;
 }
 
@@ -254,10 +289,34 @@ static void stack_push(ApexVM *vm, ApexValue value) {
  * @return The ApexValue at the top of the stack after popping.
  */
 static ApexValue stack_pop(ApexVM *vm) {
+    ApexValue value;
     if (vm->stack_top == 0) {
         apexErr_runtime(vm, "stack underflow");
     }
-    return vm->stack[--vm->stack_top];
+    value = vm->stack[--vm->stack_top];
+    return value;
+}
+
+/**
+ * Peeks at an ApexValue on the virtual machine's stack.
+ *
+ * This function takes a virtual machine instance and an offset, and returns
+ * the value at the given offset from the top of the stack without modifying
+ * the stack. If the offset is invalid (i.e. it points to a location before the
+ * beginning of the stack), it will generate a runtime error of "stack
+ * underflow: invalid offset".
+ *
+ * @param vm A pointer to the virtual machine instance whose stack the
+ *           value will be peeked from.
+ * @param offset The offset from the top of the stack to peek from.
+ *
+ * @return The value at the given offset from the top of the stack.
+ */
+ApexValue stack_peek(ApexVM *vm, int offset) {
+    if (vm->stack_top - 1 - offset < 0) {
+        apexErr_runtime(vm, "stack underflow: invalid offset");
+    }
+    return vm->stack[vm->stack_top - 1 - offset];
 }
 
 /**
@@ -287,7 +346,7 @@ void apexVM_pushval(ApexVM *vm, ApexValue value) {
  * @param str The string value to push.
  */
 void apexVM_pushstr(ApexVM *vm, const char *str) {
-    char *s = new_string(str, strlen(str));
+    char *s = apexStr_new(str, strlen(str));
     stack_push(vm, apexVal_makestr(s));
 }
 
@@ -319,6 +378,28 @@ void apexVM_pushflt(ApexVM *vm, float flt) {
  */
 void apexVM_pushbool(ApexVM *vm, Bool b) {
     stack_push(vm, apexVal_makebool(b));
+}
+
+static void set_array_element(Array *array, ApexValue index, ApexValue value) {
+    ApexValue existing_value;
+
+    if (apexVal_arrayget(&existing_value, array, index)) {
+        decrement_reference(existing_value);
+    }
+
+    increment_reference(value);
+    apexVal_arrayset(array, index, value);
+}
+
+ApexValue get_array_element(ApexVM *vm, Array *array, ApexValue index) {
+    ApexValue value;
+
+    if (!apexVal_arrayget(&value, array, index)) {
+        char *indexstr = apexStr_valtostr(index);
+        apexErr_runtime(vm, "invalid array index: %s", indexstr);
+    }
+
+    return value;
 }
 
 /**
@@ -649,14 +730,15 @@ void vm_dispatch(ApexVM *vm) {
             int ret_addr;
 
             pop_callframe(vm, ins->srcloc);
-
+            ret_val = stack_pop(vm);
             if (vm->stack_top > 0) {
-                ret_val = stack_pop(vm);
+                ret_addr = stack_pop(vm).intval;
             } else {
+                ret_addr = ret_val.intval;
                 ret_val = apexVal_makenull();
             }
 
-            ret_addr = stack_pop(vm).intval;
+            
             vm->ip = ret_addr;
             stack_push(vm, ret_val);
             pop_scope(&vm->local_scopes);
@@ -707,6 +789,7 @@ void vm_dispatch(ApexVM *vm) {
                 break;
 
             case APEX_VAL_FN:
+            case APEX_VAL_ARR:
                 condition = apexVal_makebool(TRUE);
                 break;
 
@@ -720,10 +803,45 @@ void vm_dispatch(ApexVM *vm) {
             }
             break;
         }
+        case OP_CREATE_ARRAY: {
+            int i;
+            Array *array = apexVal_newarray();
+
+            for (i = ins->value.intval; i; i--) {
+                ApexValue value = stack_pop(vm);
+                ApexValue key = stack_pop(vm);
+               
+                apexVal_arrayset(array, key, value);
+            }
+            stack_push(vm, apexVal_makearr(array));
+            break;
+        }
+        case OP_GET_ELEMENT: {
+            ApexValue index = stack_pop(vm);
+            ApexValue array = stack_pop(vm);
+            ApexValue value = get_array_element(vm, array.arrval, index);
+
+            increment_reference(value);
+            stack_push(vm, value);
+            break;
+        }
+        case OP_SET_ELEMENT: {
+            ApexValue value = stack_pop(vm);
+            ApexValue index = stack_pop(vm);
+            ApexValue array = stack_pop(vm);
+
+            set_array_element(array.arrval, index, value);
+            break;
+        }
         case OP_SET_GLOBAL: {
             const char *name = ins->value.strval;
-            ApexValue value = stack_pop(vm);
-            if (!set_symbol_value(&vm->global_table, name, value)) {
+            ApexValue new_value = stack_pop(vm);
+            ApexValue old_value = get_symbol_value_by_name(&vm->global_table, name);
+
+            decrement_reference(old_value);
+            increment_reference(new_value);
+
+            if (!set_symbol_value(&vm->global_table, name, new_value)) {
                 apexErr_fatal(ins->srcloc, "attemt to set an undefined global variable: '%s'", name);
             }
             break;
@@ -731,13 +849,19 @@ void vm_dispatch(ApexVM *vm) {
         case OP_GET_GLOBAL: {
             const char *name = ins->value.strval;
             ApexValue value = get_symbol_value_by_name(&vm->global_table, name);
+            increment_reference(value); 
             stack_push(vm, value);
             break;
         }
         case OP_SET_LOCAL: {
             int addr = ins->value.intval;
-            ApexValue value = stack_pop(vm);
-            if (set_local_symbol_value(&vm->local_scopes, addr, value)) {
+            ApexValue new_value = stack_pop(vm);
+            ApexValue old_value = get_local_symbol_value(&vm->local_scopes, addr);
+
+            decrement_reference(old_value);
+            increment_reference(new_value);
+
+            if (set_local_symbol_value(&vm->local_scopes, addr, new_value)) {
                 apexErr_fatal(ins->srcloc, "attempt to set an undefined local variable: %d", addr);
             }
             break;

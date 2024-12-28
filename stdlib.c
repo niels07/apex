@@ -53,6 +53,10 @@ void apex_int(ApexVM *vm) {
         apexErr_fatal(vm->ins->srcloc, "cannot convert fn to int");
         break;
 
+    case APEX_VAL_ARR: 
+        apexErr_fatal(vm->ins->srcloc, "cannot convert array to int");
+        break;
+
     case APEX_VAL_NULL:
         apexErr_fatal(vm->ins->srcloc, "cannot convert null to int");
         break;
@@ -97,6 +101,10 @@ void apex_flt(ApexVM *vm) {
         apexErr_fatal(vm->ins->srcloc, "cannot convert fn to flt");
         break;
 
+    case APEX_VAL_ARR: 
+        apexErr_fatal(vm->ins->srcloc, "cannot convert array to flt");
+        break;
+
     case APEX_VAL_NULL:
         apexErr_fatal(vm->ins->srcloc, "cannot convert null to flt");
         break;
@@ -110,6 +118,7 @@ void apex_bool(ApexVM *vm) {
     case APEX_VAL_FLT:
     case APEX_VAL_STR:
     case APEX_VAL_FN:
+    case APEX_VAL_ARR:
         apexVM_pushbool(vm, TRUE);
         break;
 

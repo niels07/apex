@@ -47,14 +47,19 @@ static TokenStr tk2str[] = {
     {"&&", 2}, 
     {"|", 1}, 
     {"||", 2},
+    {"break", 5},
+    {"continue", 8},
     {"(", 1},
     {")", 1},
     {"{", 1},
     {"}", 1},
+    {"[", 1},
+    {"]", 1},
     {",", 1}, 
     {";", 1},
     {"true", 4}, 
     {"false", 5},
+    {"=>", 2}, 
     {"eof", 3}
 };
 
@@ -71,9 +76,11 @@ static const char *IF_STR, *ELIF_STR, *ELSE_STR,
     *AMP_STR, *AND_STR, *PIPE_STR, *OR_STR,
     *LPAREN_STR, *RPAREN_STR, 
     *LBRACE_STR, *RBRACE_STR, 
+    *LBRACKET_STR, *RBRACKET_STR,
     *COMMA_STR, *SEMICOLON_STR, 
     *BREAK_STR, *CONTINUE_STR,
-    *TRUE_STR, *FALSE_STR;
+    *TRUE_STR, *FALSE_STR,
+    *ARROW_STR;
 
 static int globals_initialized = 0;
 
@@ -85,45 +92,48 @@ static int globals_initialized = 0;
  * @see init_lexer
  */
 static void init_lexer_globals() {
-    IF_STR = new_string("if", 2);
-    ELIF_STR = new_string("elif", 4);
-    ELSE_STR = new_string("else", 4);
-    FN_STR = new_string("fn", 2);
-    FOR_STR = new_string("for", 3);
-    WHILE_STR = new_string("while", 5);
-    RETURN_STR = new_string("return", 6);
-    PLUS_STR = new_string("+", 1);
-    MINUS_STR = new_string("-", 1);
-    STAR_STR = new_string("*", 1);
-    SLASH_STR = new_string("/", 1);
-    PLUS_PLUS_STR = new_string("++", 2);
-    MINUS_MINUS_STR = new_string("--", 2);
-    EQUAL_STR = new_string("=", 1);
-    PLUS_EQUAL_STR = new_string("+=", 2);
-    MINUS_EQUAL_STR = new_string("-=", 2);
-    STAR_EQUAL_STR = new_string("*=", 2);
-    SLASH_EQUAL_STR = new_string("/=", 2);
-    EQUAL_EQUAL_STR = new_string("==", 2);
-    NOT_EQUAL_STR = new_string("!=", 2);
-    LESS_STR = new_string("<", 1);
-    GREATER_STR = new_string(">", 1);
-    LESS_EQUAL_STR = new_string("<=", 2);
-    GREATER_EQUAL_STR = new_string(">=", 2);
-    NOT_STR = new_string("!", 1);
-    AMP_STR = new_string("&", 1);
-    AND_STR = new_string("&&", 2);
-    PIPE_STR = new_string("|", 1);
-    OR_STR = new_string("||", 2);
-    LPAREN_STR = new_string("(", 1);
-    RPAREN_STR = new_string(")", 1);
-    LBRACE_STR = new_string("{", 1);
-    RBRACE_STR = new_string("}", 1);
-    COMMA_STR = new_string(",", 1);
-    SEMICOLON_STR = new_string(";", 1);
-    CONTINUE_STR = new_string("continue", 8);
-    BREAK_STR = new_string("break", 5);
-    TRUE_STR = new_string("true", 4);
-    FALSE_STR = new_string("false", 5);
+    IF_STR = apexStr_new("if", 2);
+    ELIF_STR = apexStr_new("elif", 4);
+    ELSE_STR = apexStr_new("else", 4);
+    FN_STR = apexStr_new("fn", 2);
+    FOR_STR = apexStr_new("for", 3);
+    WHILE_STR = apexStr_new("while", 5);
+    RETURN_STR = apexStr_new("return", 6);
+    PLUS_STR = apexStr_new("+", 1);
+    MINUS_STR = apexStr_new("-", 1);
+    STAR_STR = apexStr_new("*", 1);
+    SLASH_STR = apexStr_new("/", 1);
+    PLUS_PLUS_STR = apexStr_new("++", 2);
+    MINUS_MINUS_STR = apexStr_new("--", 2);
+    EQUAL_STR = apexStr_new("=", 1);
+    PLUS_EQUAL_STR = apexStr_new("+=", 2);
+    MINUS_EQUAL_STR = apexStr_new("-=", 2);
+    STAR_EQUAL_STR = apexStr_new("*=", 2);
+    SLASH_EQUAL_STR = apexStr_new("/=", 2);
+    EQUAL_EQUAL_STR = apexStr_new("==", 2);
+    NOT_EQUAL_STR = apexStr_new("!=", 2);
+    LESS_STR = apexStr_new("<", 1);
+    GREATER_STR = apexStr_new(">", 1);
+    LESS_EQUAL_STR = apexStr_new("<=", 2);
+    GREATER_EQUAL_STR = apexStr_new(">=", 2);
+    NOT_STR = apexStr_new("!", 1);
+    AMP_STR = apexStr_new("&", 1);
+    AND_STR = apexStr_new("&&", 2);
+    PIPE_STR = apexStr_new("|", 1);
+    OR_STR = apexStr_new("||", 2);
+    LPAREN_STR = apexStr_new("(", 1);
+    RPAREN_STR = apexStr_new(")", 1);
+    LBRACE_STR = apexStr_new("{", 1);
+    RBRACE_STR = apexStr_new("}", 1);
+    LBRACKET_STR = apexStr_new("[", 1);
+    RBRACKET_STR = apexStr_new("]", 1);
+    COMMA_STR = apexStr_new(",", 1);
+    SEMICOLON_STR = apexStr_new(";", 1);
+    CONTINUE_STR = apexStr_new("continue", 8);
+    BREAK_STR = apexStr_new("break", 5);
+    TRUE_STR = apexStr_new("true", 4);
+    FALSE_STR = apexStr_new("false", 5);
+    ARROW_STR = apexStr_new("=>", 2);
 };
 
 /**
@@ -137,7 +147,7 @@ static void init_lexer_globals() {
  * @return A newly allocated string representing the given token type.
  */
 char *get_token_str(TokenType type) {
-    return new_string(tk2str[type].str, tk2str[type].len);
+    return apexStr_new(tk2str[type].str, tk2str[type].len);
 }
 
 
@@ -302,7 +312,7 @@ static Token *scan_num(Lexer *lexer) {
     }
 
     len = lexer->position - start;
-    num = new_string(lexer->source + start, len);
+    num = apexStr_new(lexer->source + start, len);
     return create_token(lexer, token_type, num);
 }
 
@@ -329,7 +339,7 @@ static Token *scan_ident(Lexer *lexer) {
     }
 
     len = lexer->position - start;
-    ident = new_string(lexer->source + start, len);
+    ident = apexStr_new(lexer->source + start, len);
 
     if (ident == IF_STR) {
         return create_token(lexer, TOKEN_IF, ident);
@@ -385,7 +395,7 @@ static Token *scan_str(Lexer *lexer) {
     }
     
     len = lexer->position - start - 1;
-    str = new_string(lexer->source + start, len);
+    str = apexStr_new(lexer->source + start, len);
     return create_token(lexer, TOKEN_STR, str);
 }
 
@@ -411,7 +421,7 @@ Token *get_next_token(Lexer *lexer) {
     skip_comments(lexer);
 
     if (lexer->position >= lexer->length) {
-        return create_token(lexer, TOKEN_EOF, new_string("EOF", 3));
+        return create_token(lexer, TOKEN_EOF, apexStr_new("EOF", 3));
     }
 
     c = advance(lexer);
@@ -433,7 +443,12 @@ Token *get_next_token(Lexer *lexer) {
             return create_token(
                 lexer, TOKEN_EQUAL_EQUAL, 
                 (char *)EQUAL_EQUAL_STR);
-        } 
+        } else if (peek(lexer) == '>') {
+            advance(lexer);
+            return create_token(
+                lexer, TOKEN_ARROW,
+                (char *)ARROW_STR);
+        }
         return create_token(
             lexer, TOKEN_EQUAL,
             (char *)EQUAL_STR);      
@@ -491,6 +506,14 @@ Token *get_next_token(Lexer *lexer) {
         return create_token(
             lexer, TOKEN_RBRACE, 
             (char *)RBRACE_STR);
+    case '[':
+        return create_token(
+            lexer, TOKEN_LBRACKET, 
+            (char *)LBRACKET_STR);
+    case ']':
+        return create_token(
+            lexer, TOKEN_RBRACKET, 
+            (char *)RBRACKET_STR);    
     case ',': 
         return create_token(
             lexer, TOKEN_COMMA, 

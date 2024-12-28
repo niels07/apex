@@ -6,6 +6,7 @@
 #include "value.h"
 #include "util.h"
 
+
 #define TABLE_SIZE 1024
 
 typedef struct String {
@@ -53,6 +54,45 @@ void init_string_table(void) {
 }
 
 /**
+ * Saves a string in the string table.
+ *
+ * This function takes a string and its length as input and checks if the string
+ * is already present in the string table. If the string is already present, the
+ * function returns the existing pointer to the string, and frees the input string.
+ * If the string is not present, a new entry is created in the string table with
+ * the input string, and a pointer to the new string is returned.
+ *
+ * @param str The string to save in the string table.
+ * @param n The length of the input string.
+ * @return A pointer to the saved string in the string table.
+ */
+static char *save_string(char *str, size_t n) {
+    unsigned int index;
+    String *entry;
+    String *new_entry;
+    
+    index = hash_string(str, n);
+    entry = string_table[index];
+
+    while (entry != NULL) {
+        if (entry->len == n && strncmp(entry->value, str, n) == 0) {
+            free(str);
+            return entry->value;
+        }
+        entry = entry->next;
+    }
+
+    new_entry = mem_alloc(sizeof(String));
+    new_entry->value = str;
+    new_entry->len = n;
+
+    new_entry->next = string_table[index];
+    string_table[index] = new_entry;
+
+    return new_entry->value;
+}
+
+/**
  * Creates a new string in the string table.
  *
  * This function takes a string and its length as input and creates a new entry
@@ -64,7 +104,7 @@ void init_string_table(void) {
  * @param n The length of the string.
  * @return A pointer to the newly allocated string in the string table.
  */
-char *new_string(const char *str, size_t n) {
+char *apexStr_new(const char *str, size_t n) {
     unsigned int index = hash_string(str, n);
     String *entry = string_table[index];
     String *new_entry;
@@ -105,34 +145,104 @@ static char *fntostr(Fn *fn) {
     char addrstr[20];
     char *str;
     size_t n;
-    unsigned int index;
-    String *entry;
-    String *new_entry;
 
     apexUtl_snprintf(addrstr, sizeof(addrstr), "%d", fn->addr);
     n = 20 + strlen(fn->name) + strlen(addrstr);
     str = mem_alloc(n + 1);
     apexUtl_snprintf(str, n + 1, "[function %s at addr %d]", fn->name, fn->addr);
+    return save_string(str, n);
+}
 
-    index = hash_string(str, n);
-    entry = string_table[index];
 
-    while (entry != NULL) {
-        if (entry->len == n && strncmp(entry->value, str, n) == 0) {
-            free(str);
-            return entry->value;
-        }
-        entry = entry->next;
+/**
+ * Converts an array to a string.
+ *
+ * This function takes an array as input and creates a string representation of
+ * the array. The string is formatted as "[<key> => <value>, ...]". If the
+ * string is already in the string table, the existing pointer is returned.
+ * Otherwise, a new entry is created in the string table.
+ *
+ * @param arr The array to convert to a string.
+ * @return A pointer to the string representation of the array in the string
+ *         table.
+ */
+static char *arrtostr(Array *arr) {
+    char *str = mem_alloc(128);
+    int n = 1; 
+    int size = 128;
+    int i;
+
+    if (arr->n == 0) {
+        apexUtl_snprintf(str, size, "[]");
+        return save_string(str, 2);
     }
 
-    new_entry = mem_alloc(sizeof(String));
-    new_entry->value = str;
-    new_entry->len = n;
+    str[0] = '[';
+    str[1] = '\0';
 
-    new_entry->next = string_table[index];
-    string_table[index] = new_entry;
+    for (i = 0; i < arr->size; i++) {
+        ArrayEntry *entry = arr->entries[i];
+        while (entry) {
+            char *keystr = apexStr_valtostr(entry->key);
+            char *valstr = apexStr_valtostr(entry->value);
 
-    return new_entry->value;
+            int keylen = strlen(keystr);
+            int vallen = strlen(valstr);
+            Bool is_key_string = (entry->key.type == APEX_VAL_STR);
+            Bool is_val_string = (entry->value.type == APEX_VAL_STR);
+
+            int elen = (is_key_string ? 2 : 0) + keylen + 4 +
+                       (is_val_string ? 2 : 0) + vallen;
+            int nspace = n + elen + (i > 0 ? 2 : 0);
+
+            if (nspace >= size) {
+                while (nspace >= size) {
+                    size *= 2;
+                }
+                str = mem_realloc(str, size);
+            }
+
+            if (n > 1) {
+                strcat(str, ", ");
+                n += 2;
+            }
+
+            if (is_key_string) {
+                str[n++] = '"';
+                strncpy(&str[n], keystr, keylen);
+                n += keylen;
+                str[n++] = '"';
+            } else {
+                strncpy(&str[n], keystr, keylen);
+                n += keylen;
+            }
+
+            memcpy(&str[n], " => ", 4);
+            n += 4;
+
+            if (is_val_string) {
+                str[n++] = '"';
+                strncpy(&str[n], valstr, vallen);
+                n += vallen;
+                str[n++] = '"';
+            } else {
+                strncpy(&str[n], valstr, vallen);
+                n += vallen;
+            }
+
+            str[n] = '\0';
+            entry = entry->next;
+        }
+    }
+
+    if (n + 1 >= size) {
+        size += 1;
+        str = mem_realloc(str, size);
+    }
+    str[n++] = ']';
+    str[n] = '\0';
+
+    return save_string(str, n);
 }
 
 /**
@@ -153,25 +263,28 @@ char *apexStr_valtostr(ApexValue value) {
     case APEX_VAL_INT: {
         char buf[12];
         sprintf(buf, "%d", value.intval);
-        return new_string(buf, strlen(buf));
+        return apexStr_new(buf, strlen(buf));
     }
     case APEX_VAL_FLT: {
         char buf[48];
         sprintf(buf, "%.8g", apexVal_flt(value));
-        return new_string(buf, strlen(buf));
+        return apexStr_new(buf, strlen(buf));
         break;
     }
     case APEX_VAL_STR:
         return value.strval;
 
     case APEX_VAL_BOOL:
-        return new_string(value.boolval ? "true" : "false", value.boolval ? 4 : 5);
+        return apexStr_new(value.boolval ? "true" : "false", value.boolval ? 4 : 5);
 
     case APEX_VAL_FN:
         return fntostr(value.fnval);
 
+    case APEX_VAL_ARR:
+        return arrtostr(value.arrval);
+
     case APEX_VAL_NULL:
-        return new_string("null", 4);
+        return apexStr_new("null", 4);
     }
     return NULL;
 }
@@ -254,7 +367,7 @@ char *cat_string(const char *str1, const char *str2) {
     memcpy(concat + len1, str2, len2);
     concat[len1 + len2] = '\0';
 
-    result = new_string(concat, len1 + len2);
+    result = apexStr_new(concat, len1 + len2);
     free(concat);
 
     return result;
