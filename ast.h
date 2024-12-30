@@ -28,7 +28,8 @@ typedef enum {
     AST_RETURN,
     AST_BREAK,
     AST_CONTINUE,
-    AST_STATEMENT
+    AST_STATEMENT,
+    AST_INCLUDE
 } ASTNodeType;
 
 typedef union {

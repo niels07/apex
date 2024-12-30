@@ -704,6 +704,38 @@ static AST *parse_block(Parser *parser) {
 }
 
 /**
+ * Parses an include statement from the input tokens.
+ *
+ * This function assumes that the current token is the 'include' keyword, and
+ * will parse the file path string following the keyword. If the file path is
+ * not a string, a syntax error is reported and an error node is returned.
+ * The function returns an AST node representing the include statement, with
+ * the file path stored as a string value.
+ *
+ * @param parser A pointer to the Parser containing the tokens to be parsed.
+ * @return A pointer to an AST node representing the parsed include statement.
+ */
+static AST *parse_include(Parser *parser) {
+    char *filepath;
+    consume(parser, TOKEN_INCLUDE);
+
+    if (parser->current_token->type != TOKEN_STR) {
+        apexErr_syntax(
+            parser->current_token->srcloc, 
+            "expected file path string after 'include'");
+        return create_error_ast();
+    }
+
+    filepath = parser->current_token->value;
+    consume(parser, TOKEN_STR);
+
+    return create_ast_node(
+        AST_INCLUDE, NULL, NULL, 
+        ast_value_str(filepath),
+        parser->current_token->srcloc);
+}
+
+/**
  * Parses an if statement from the input tokens.
  *
  * This function assumes that the current token is the start of an if statement,
@@ -994,29 +1026,29 @@ static AST *parse_function_declaration(Parser *parser) {
  *         if a syntax error is encountered.
  */
 static AST *parse_statement(Parser *parser) {
-    AST *statement = NULL;
+    AST *stmt = NULL;
     Token next_token;
     SrcLoc srcloc = parser->current_token->srcloc;
 
     switch (parser->current_token->type) {
     case TOKEN_IF:
-        statement = parse_if_statement(parser);
+        stmt = parse_if_statement(parser);
         break;    
 
     case TOKEN_WHILE:
-        statement = parse_while_statement(parser);
+        stmt = parse_while_statement(parser);
         break;    
 
     case TOKEN_FOR:
-        statement = parse_for_statement(parser);
+        stmt = parse_for_statement(parser);
         break;
 
     case TOKEN_FN:
-        statement = parse_function_declaration(parser);
+        stmt = parse_function_declaration(parser);
         break;
 
     case TOKEN_RETURN:
-        statement = parse_return_statement(parser);
+        stmt = parse_return_statement(parser);
         break;
 
     case TOKEN_IDENT:
@@ -1027,22 +1059,22 @@ static AST *parse_statement(Parser *parser) {
             next_token.type == TOKEN_STAR_EQUAL || 
             next_token.type == TOKEN_SLASH_EQUAL ||
             next_token.type == TOKEN_LBRACKET) {            
-            statement = parse_assignment(parser);
+            stmt = parse_assignment(parser);
             consume(parser, TOKEN_SEMICOLON);
             break;
         } else if (next_token.type == TOKEN_LPAREN) {
-            statement = parse_function_call(parser);
+            stmt = parse_function_call(parser);
             consume(parser, TOKEN_SEMICOLON);
             break;
         } else {
-            statement = parse_expression(parser);
+            stmt = parse_expression(parser);
             consume(parser, TOKEN_SEMICOLON);
             break;
         }
 
     case TOKEN_CONTINUE:
         consume(parser, TOKEN_CONTINUE);
-        statement = create_ast_node(
+        stmt = create_ast_node(
             AST_CONTINUE, NULL, NULL, 
             ast_value_zero(), 
             parser->current_token->srcloc);
@@ -1051,27 +1083,32 @@ static AST *parse_statement(Parser *parser) {
 
     case TOKEN_BREAK:
         consume(parser, TOKEN_BREAK);
-        statement = create_ast_node(
+        stmt = create_ast_node(
             AST_BREAK, NULL, NULL, 
             ast_value_zero(), 
             parser->current_token->srcloc);
         consume(parser, TOKEN_SEMICOLON);
         break;
+
+    case TOKEN_INCLUDE:
+        stmt = parse_include(parser);
+        consume(parser, TOKEN_SEMICOLON);
+        break;
         
     default:
-        statement = parse_expression(parser);
+        stmt = parse_expression(parser);
         consume(parser, TOKEN_SEMICOLON);
         break;
     }
 
-    if (statement && statement->type != AST_STATEMENT) { 
-        statement = create_ast_node(
-            AST_STATEMENT, statement, NULL,
+    if (stmt && stmt->type != AST_STATEMENT) { 
+        stmt = create_ast_node(
+            AST_STATEMENT, stmt, NULL,
             ast_value_zero(),
             srcloc);
     }
 
-    return statement;
+    return stmt;
 }
 
 /**

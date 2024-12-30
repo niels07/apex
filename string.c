@@ -66,7 +66,7 @@ void init_string_table(void) {
  * @param n The length of the input string.
  * @return A pointer to the saved string in the string table.
  */
-static char *save_string(char *str, size_t n) {
+char *apexStr_save(char *str, size_t n) {
     unsigned int index;
     String *entry;
     String *new_entry;
@@ -150,7 +150,7 @@ static char *fntostr(Fn *fn) {
     n = 20 + strlen(fn->name) + strlen(addrstr);
     str = mem_alloc(n + 1);
     apexUtl_snprintf(str, n + 1, "[function %s at addr %d]", fn->name, fn->addr);
-    return save_string(str, n);
+    return apexStr_save(str, n);
 }
 
 
@@ -174,7 +174,7 @@ static char *arrtostr(Array *arr) {
 
     if (arr->n == 0) {
         apexUtl_snprintf(str, size, "[]");
-        return save_string(str, 2);
+        return apexStr_save(str, 2);
     }
 
     str[0] = '[';
@@ -242,7 +242,7 @@ static char *arrtostr(Array *arr) {
     str[n++] = ']';
     str[n] = '\0';
 
-    return save_string(str, n);
+    return apexStr_save(str, n);
 }
 
 /**

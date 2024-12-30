@@ -60,6 +60,7 @@ static TokenStr tk2str[] = {
     {"true", 4}, 
     {"false", 5},
     {"=>", 2}, 
+    {"include", 7},
     {"eof", 3}
 };
 
@@ -80,6 +81,7 @@ static const char *IF_STR, *ELIF_STR, *ELSE_STR,
     *COMMA_STR, *SEMICOLON_STR, 
     *BREAK_STR, *CONTINUE_STR,
     *TRUE_STR, *FALSE_STR,
+    *INCLUDE_STR,
     *ARROW_STR;
 
 static int globals_initialized = 0;
@@ -134,6 +136,7 @@ static void init_lexer_globals() {
     TRUE_STR = apexStr_new("true", 4);
     FALSE_STR = apexStr_new("false", 5);
     ARROW_STR = apexStr_new("=>", 2);
+    INCLUDE_STR = apexStr_new("include", 7);
 };
 
 /**
@@ -363,6 +366,8 @@ static Token *scan_ident(Lexer *lexer) {
         return create_token(lexer, TOKEN_BREAK, ident);
     } else if (ident == CONTINUE_STR) {
         return create_token(lexer, TOKEN_CONTINUE, ident);
+    } else if (ident == INCLUDE_STR) {
+        return create_token(lexer, TOKEN_INCLUDE, ident);
     }
     return create_token(lexer, TOKEN_IDENT, ident);
 }

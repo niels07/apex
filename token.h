@@ -50,6 +50,7 @@ typedef enum {
     TOKEN_TRUE,
     TOKEN_FALSE,
     TOKEN_ARROW,
+    TOKEN_INCLUDE,
     TOKEN_EOF
 } TokenType;
 

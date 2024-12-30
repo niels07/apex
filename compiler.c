@@ -10,6 +10,9 @@
 #include "mem.h"
 #include "string.h"
 #include "stdlib.h"
+#include "lexer.h"
+#include "parser.h"
+#include "util.h"
 
 static const char *get_ast_node_type_name(ASTNodeType type) {
     switch (type) {
@@ -35,6 +38,7 @@ static const char *get_ast_node_type_name(ASTNodeType type) {
         case AST_STATEMENT: return "AST_STATEMENT";
         case AST_CONTINUE: return "AST_CONTINUE";
         case AST_BREAK: return "AST_BREAK";
+        case AST_INCLUDE: return "AST_INCLUDE";
         default: return "UNKNOWN_AST_NODE_TYPE";
     }
 }
@@ -555,6 +559,122 @@ static void compile_expression(ApexVM *vm, AST *node) {
 }
 
 /**
+ * Predeclare symbols in the program.
+ *
+ * This function predeclares all symbols in the program, by iterating through
+ * the AST and adding each symbol to the global or function symbol table, as
+ * appropriate.
+ *
+ * @param vm A pointer to the virtual machine structure containing the
+ *           instruction chunk and the local and global symbol tables.
+ * @param node The AST node representing the statement to be compiled.
+ * @param in_function A boolean indicating whether or not this statement is
+ *                    currently inside a function. If true, the function symbol
+ *                    table is used. If false, the global symbol table is used.
+ */
+static void predeclare_symbols(ApexVM *vm, AST *node, Bool in_function) {
+    Bool have_function = FALSE;
+
+    while (node != NULL) {
+        if (node->type == AST_FN_DECL) {
+            add_symbol(&vm->fn_table, node->left->value.strval);
+            predeclare_symbols(vm, node->right, TRUE);
+            have_function = TRUE;
+        } else if (node->type == AST_ASSIGNMENT && !in_function) {
+            add_symbol(&vm->global_table, node->left->value.strval);
+        }
+
+        if (node->left) {
+            predeclare_symbols(vm, node->left, in_function);
+        }
+        if (node->right && !have_function) {
+            predeclare_symbols(vm, node->right, in_function);
+        }
+        break;
+    }
+}
+
+/**
+ * Compile an include statement.
+ *
+ * This function reads the contents of the file specified in the include
+ * statement into a string, creates a lexer and parser from that string, and
+ * compiles the resulting program to bytecode.
+ *
+ * @param vm A pointer to the virtual machine structure containing the
+ *           instruction chunk.
+ * @param node The AST node representing the include statement to be compiled.
+ */
+static void compile_include(ApexVM *vm, AST *node) {
+    const char *incpath = node->value.strval;
+    const char *filepath = node->srcloc.filename;
+    FILE *file;
+    Lexer lexer;
+    Parser parser;
+    AST *program;
+    ;
+    printf("==>%s\n", filepath);
+    char *lslash = strrchr(filepath, '/');
+#ifdef _WIN32
+    if (!lslash) {
+        lslash = strrchr(filepath, '\\');
+    }
+#endif
+    
+    if (lslash && filepath[0] != '/') {
+        size_t dir_len = lslash - filepath + 1;
+        size_t fullpath_len = dir_len + strlen(incpath) + 1;
+        char *fullpath = mem_alloc(fullpath_len);
+        apexUtl_snprintf(fullpath, fullpath_len, "%.*s%s", (int)dir_len, filepath, incpath);
+        
+        file = fopen(fullpath, "r");
+        if (!file) {
+            apexErr_errno(
+                node->srcloc, 
+                "cannot include specified path: %s", 
+                fullpath);
+        }
+        free(fullpath);
+    } else {
+        file = fopen(incpath, "r");
+        if (!file) {
+            apexErr_errno(
+                node->srcloc, 
+                "cannot include specified path: %s", 
+                incpath);
+        }
+    }
+
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    rewind(file);
+
+    char *source = mem_alloc(file_size + 1);
+    fread(source, 1, file_size, file);
+    source[file_size] = '\0';
+    fclose(file);
+
+    init_lexer(&lexer, filepath, source);
+    init_parser(&parser, &lexer);
+
+    program = parse_program(&parser);
+    if (program) {
+        predeclare_symbols(vm, program, FALSE);
+        if (program->left) {
+            compile_statement(vm, program->left);
+        }
+        
+        if (program->right) {
+            compile_statement(vm, program->right);
+        }  
+    }
+
+    free_ast(program);
+    free_parser(&parser);
+    free(source);
+}
+
+/**
  * Compiles an AST node representing a loop to bytecode.
  *
  * This function compiles the loop condition, body, and increment (if they exist),
@@ -653,6 +773,10 @@ static void compile_statement(ApexVM *vm, AST *node) {
         compile_statement(vm, node->left);
         compile_loop(vm, node->right, node->value.ast_node->right, node->value.ast_node->left);
         break;
+
+    case AST_INCLUDE:
+        compile_include(vm, node);
+        break;
         
     case AST_CONTINUE:
         if (vm->loop_start == -1) {
@@ -695,42 +819,6 @@ static void compile_statement(ApexVM *vm, AST *node) {
 
     default:
         compile_expression(vm, node);
-    }
-}
-
-/**
- * Predeclare symbols in the program.
- *
- * This function predeclares all symbols in the program, by iterating through
- * the AST and adding each symbol to the global or function symbol table, as
- * appropriate.
- *
- * @param vm A pointer to the virtual machine structure containing the
- *           instruction chunk and the local and global symbol tables.
- * @param node The AST node representing the statement to be compiled.
- * @param in_function A boolean indicating whether or not this statement is
- *                    currently inside a function. If true, the function symbol
- *                    table is used. If false, the global symbol table is used.
- */
-static void predeclare_symbols(ApexVM *vm, AST *node, Bool in_function) {
-    Bool have_function = FALSE;
-
-    while (node != NULL) {
-        if (node->type == AST_FN_DECL) {
-            add_symbol(&vm->fn_table, node->left->value.strval);
-            predeclare_symbols(vm, node->right, TRUE);
-            have_function = TRUE;
-        } else if (node->type == AST_ASSIGNMENT && !in_function) {
-            add_symbol(&vm->global_table, node->left->value.strval);
-        }
-
-        if (node->left) {
-            predeclare_symbols(vm, node->left, in_function);
-        }
-        if (node->right && !have_function) {
-            predeclare_symbols(vm, node->right, in_function);
-        }
-        break;
     }
 }
 

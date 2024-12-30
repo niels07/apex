@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <errno.h>
+#include <string.h>
 #include "vm.h"
 #include "parser.h"
 
@@ -46,6 +48,33 @@ void apexErr_fatal(SrcLoc srcloc, const char *fmt, ...) {
     exit(EXIT_FAILURE);
 }
 
+/**
+ * Prints an error message to stderr with a newline at the end, and a system
+ * error message, and terminates the program.
+ * 
+ * This function formats an error message according to the given format string
+ * and additional arguments, prepends "Error: " to the message, and appends the
+ * line number and filename from the provided ParseState. Then it appends the
+ * system error message from strerror(errno). The message is printed to stderr
+ * with a newline at the end, and the program is then terminated with an
+ * EXIT_FAILURE status.
+ *
+ * @param state The ParseState providing the line number and filename.
+ * @param fmt The format string of the error message.
+ * @param ... The arguments to the format string.
+ */
+void apexErr_errno(SrcLoc srcloc, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    fprintf(stderr, "Error: ");
+    vfprintf(stderr, fmt, args);
+    fprintf(stderr," on line %d in %s: %s\n", 
+        srcloc.lineno, 
+        srcloc.filename, 
+        strerror(errno));
+    va_end(args);
+    exit(EXIT_FAILURE);
+}
 
 /**
  * Prints a syntax error message to stderr with a newline at the end. The
@@ -65,11 +94,18 @@ void apexErr_syntax(SrcLoc srcloc, const char *fmt, ...) {
     va_end(args);
 }
 
+
 /**
- * Prints a runtime error message to stderr with the specified line number.
- * The message is formatted according to fmt and the variable arguments following it.
- * A newline is appended at the end of the message.
- * Exits the program with a status of EXIT_FAILURE after printing the error message.
+ * Prints a runtime error message to stderr with a newline at the end. The
+ * message is formatted according to fmt and the variable arguments following
+ * it. The line number and filename are also included in the message. If the
+ * call stack is not empty, a stack trace is also printed, including the
+ * function name and line number of each call frame.
+ *
+ * @param vm The ApexVM instance, providing the current instruction and call
+ *     stack.
+ * @param fmt The format string of the error message.
+ * @param ... The arguments to the format string.
  */
 void apexErr_runtime(ApexVM *vm, const char *fmt, ...) {
     va_list args;
@@ -83,6 +119,11 @@ void apexErr_runtime(ApexVM *vm, const char *fmt, ...) {
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);
     va_end(args);
+
+    if (vm->call_stack_top <= 0) {
+        fprintf(stderr, "\n");
+        exit(EXIT_FAILURE);
+    }
 
     fprintf(stderr, "\nStack trace:\n");
 

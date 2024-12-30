@@ -6,6 +6,7 @@
 
 extern void apexErr_print(const char *fmt, ...);
 extern void apexErr_fatal(SrcLoc srcloc, const char *fmt, ...);
+extern void apexErr_errno(SrcLoc srcloc, const char *fmt, ...);
 extern void apexErr_syntax(SrcLoc srcloc, const char *fmt, ...);
 void apexErr_runtime(ApexVM *vm, const char *fmt, ...);
 
