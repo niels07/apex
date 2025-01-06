@@ -272,26 +272,29 @@ static void compile_array_access(ApexVM *vm, AST *node, bool is_assignment) {
     }
 }
 
+
 /**
- * Compiles an AST node representing an argument list to bytecode.
+ * Recursively compiles an argument list to bytecode.
  *
- * This function recursively traverses the argument list, compiling each
- * argument expression in the list. It processes arguments from left
- * to right, ensuring that they are evaluated in the correct order.
- *
- * If the argument list is empty, the function returns immediately.
+ * This function compiles each argument expression in the list, and
+ * increments the argument count for each one.
  *
  * @param vm A pointer to the virtual machine structure containing the
- *           instruction chunk and symbol tables.
+ *           instruction chunk.
  * @param argument_list The AST node representing the argument list to be
  *                      compiled.
+ * @param argc A pointer to an integer to store the total number of
+ *             arguments in the list.
  */
-static void compile_argument_list(ApexVM *vm, AST *argument_list) {
+static void compile_argument_list(ApexVM *vm, AST *argument_list, int *argc) {
     if (argument_list == NULL) {
         return;
     }
-    compile_argument_list(vm, argument_list->left);
+    compile_argument_list(vm, argument_list->left, argc);
     compile_expression(vm, argument_list->right, true);
+    if (argc) {
+        (*argc)++;
+    }
 }
 
 /**
@@ -371,19 +374,20 @@ static void compile_function_declaration(ApexVM *vm, AST *node) {
  */
 static void compile_function_call(ApexVM *vm, AST *node) {
     ApexString *fn_name = node->left->value.strval;
-    
+    int argc = 0;
     UPDATE_SRCLOC(vm, node);
 
     for (int i = 0; apex_stdlib[i].name; i++) {
         if (strcmp(apex_stdlib[i].name, fn_name->value) == 0) {
-            compile_argument_list(vm, node->right);
+            compile_argument_list(vm, node->right, &argc);
             EMIT_OP_INT(vm, OP_CALL_LIB, i);
             return;
         }
     }
 
-    compile_argument_list(vm, node->right);
-    EMIT_OP_STR(vm, OP_CALL, fn_name);
+    compile_argument_list(vm, node->right, &argc);
+    EMIT_OP_STR(vm, OP_GET_GLOBAL, fn_name);
+    EMIT_OP_INT(vm, OP_CALL, argc);
 }
 
 /**
@@ -506,12 +510,13 @@ static void compile_unary_expr(ApexVM *vm, AST *node, bool result_used) {
  */
 static void compile_new(ApexVM *vm, AST *node) {
     UPDATE_SRCLOC(vm, node);
+    int argc = 0;
 
-    compile_argument_list(vm, node->right);
+    compile_argument_list(vm, node->right, &argc);
 
     // Compile the class/object name(e.g., 'obj' in 'obj.new()')
     compile_expression(vm, node->left, true);
-    EMIT_OP(vm, OP_NEW);
+    EMIT_OP_INT(vm, OP_NEW, argc);
 }
 
 /**
@@ -557,13 +562,15 @@ static void compile_member_access(ApexVM *vm, AST *node, bool is_assignment) {
  */
 static void compile_member_function_call(ApexVM *vm, AST *node) {
     UPDATE_SRCLOC(vm, node);
+    int argc = 0;
 
     // Compile the base object (e.g., 'obj' in 'obj.method()')
     compile_expression(vm, node->left, true);
 
     ApexString *name = node->right->value.strval;
-    compile_argument_list(vm, node->value.ast_node);
-    EMIT_OP_STR(vm, OP_CALL_MEMBER, name);
+    compile_argument_list(vm, node->value.ast_node, &argc);
+    EMIT_OP_STR(vm, OP_GET_MEMBER, name);
+    EMIT_OP_INT(vm, OP_CALL_MEMBER, argc);
 }
 
 /**

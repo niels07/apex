@@ -1,17 +1,19 @@
-Person = { name = "", gender = ""};
+Data = { name = "", gender = "", age = 0 };
+Person = { data = Data.new() };
 
-fn Person.new(name, gender) {
-    this.name = name;
-    this.gender = gender;
+fn Person.new(name, gender, age) {
+    this.data.name = name;
+    this.data.gender = gender;
+    this.data.age = age;
 }
 
 fn Person.talk() {
-    print("Hello, my name is " + this.name + " and I'm a " + this.gender + ".");
+    print("Hello, my name is " + this.data.name + " and I'm a " + this.data.gender + ".");
 }
 
-person = Person.new("Joey", "male");
+person = Person.new("Joey", "male", 20);
 person.talk();
 
-person.name = "Lisa";
-person.gender = "female";
+person.data.name = "Lisa";
+person.data.gender = "female";
 person.talk();

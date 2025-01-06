@@ -843,7 +843,7 @@ ApexValue getgval(ApexVM *vm, const char *name) {
 void vm_dispatch(ApexVM *vm) {
     for (;;) {
         Ins *ins = next_ins(vm);
-        printf("executing instruction %s\n", opcode_to_string(ins->opcode));
+
         switch (ins->opcode) {
         case OP_PUSH_INT:
         case OP_PUSH_DBL:
@@ -902,16 +902,10 @@ void vm_dispatch(ApexVM *vm) {
             break;
         }
         case OP_CALL: {
-            char *fn_name = ins->value.strval->value;
+            ApexValue fnval = stack_pop(vm);
+            int argc = ins->value.intval;
             int ret_addr = vm->ip;
-            ApexValue value;
-
-            if (!apexSym_getglobal(&value, &vm->global_table, fn_name)) {
-                apexErr_runtime(vm, "undefined function '%s'", fn_name);
-            }
-
-            Fn *fn = value.fnval;
-            int argc = vm->stack_top;
+            Fn *fn = fnval.fnval;
             
             if (argc != fn->param_n) {
                 apexErr_runtime(vm, "expected %d arguments, got %d", fn->param_n, argc);
@@ -1024,7 +1018,7 @@ void vm_dispatch(ApexVM *vm) {
             if (apexVal_objectget(&newFnVal, obj, apexStr_new("new", 3)->value)) {
                 int ret_addr = vm->ip;
                 Fn *fn = newFnVal.fnval;
-                int argc = vm->stack_top;
+                int argc = ins->value.intval;
                 if (argc != fn->param_n) {
                     apexErr_arg(vm, "expected %d arguments, got %d", fn->param_n, argc);
                 }
@@ -1046,12 +1040,15 @@ void vm_dispatch(ApexVM *vm) {
                 stack_push(vm, apexVal_makeint(ret_addr));
                 vm->ip = fn->addr;
             } else {
-                if (vm->stack_top > 0) {
+                if (ins->value.intval > 0) {
                     apexErr_arg(vm, "expected 0 arguments, got %d", vm->stack_top);
                 }
                 ApexObject *newobj = apexVal_newobject();
-                for (int i = 0; i < obj->n; i++) {
-                    apexVal_objectset(newobj, obj->entries[i]->key, obj->entries[i]->value);
+                for (int i = 0; i < obj->size; i++) {
+                    ApexObjectEntry *entry = obj->entries[i];
+                    if (entry) {
+                        apexVal_objectset(newobj, entry->key, entry->value);
+                    }
                 }
                 stack_push(vm, apexVal_makeobj(newobj));
             }        
@@ -1084,18 +1081,10 @@ void vm_dispatch(ApexVM *vm) {
             break;
         }
         case OP_CALL_MEMBER: { // obj.method(arg1, arg2, ...)
-            ApexValue objval = stack_pop(vm);
-            ApexObject *obj = objval.objval;
-            char *fn_name = ins->value.strval->value;
+            ApexValue fnval = stack_pop(vm);
+            Fn *fn = fnval.fnval;
+            int argc = ins->value.intval;
             int ret_addr = vm->ip;
-            ApexValue value;
-
-            if (!apexVal_objectget(&value, obj, fn_name)) {
-                apexErr_runtime(vm, "object '%s' has no method '%s'", obj->name, fn_name);
-            }
-
-            Fn *fn = value.fnval;
-            int argc = vm->stack_top;
 
             if (argc != fn->param_n) {
                 apexErr_arg(vm, "expected %d arguments, got %d", fn->param_n, argc);
