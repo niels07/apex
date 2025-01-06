@@ -16,7 +16,7 @@ typedef struct {
 static TokenStr tk2str[] = {
     {"identifier", 10}, 
     {"int", 3}, 
-    {"float", 5}, 
+    {"double", 6}, 
     {"string", 6}, 
     {"if", 2}, 
     {"elif", 4}, 
@@ -61,11 +61,12 @@ static TokenStr tk2str[] = {
     {"false", 5},
     {"=>", 2}, 
     {"include", 7},
+    {".", 1},
     {"eof", 3}
 };
 
 /* Global strings used by the lexer. */
-static const char *IF_STR, *ELIF_STR, *ELSE_STR,
+static ApexString *IF_STR, *ELIF_STR, *ELSE_STR,
     *FN_STR, 
     *FOR_STR, *WHILE_STR, *RETURN_STR, 
     *PLUS_STR, *MINUS_STR, *STAR_STR, *SLASH_STR, 
@@ -82,7 +83,8 @@ static const char *IF_STR, *ELIF_STR, *ELSE_STR,
     *BREAK_STR, *CONTINUE_STR,
     *TRUE_STR, *FALSE_STR,
     *INCLUDE_STR,
-    *ARROW_STR;
+    *ARROW_STR,
+    *DOT_STR;
 
 static int globals_initialized = 0;
 
@@ -137,6 +139,8 @@ static void init_lexer_globals() {
     FALSE_STR = apexStr_new("false", 5);
     ARROW_STR = apexStr_new("=>", 2);
     INCLUDE_STR = apexStr_new("include", 7);
+    DOT_STR = apexStr_new(".", 1);
+    globals_initialized = 1;
 };
 
 /**
@@ -149,7 +153,7 @@ static void init_lexer_globals() {
  * @param type The token type to retrieve a string for.
  * @return A newly allocated string representing the given token type.
  */
-char *get_token_str(TokenType type) {
+ApexString *get_token_str(TokenType type) {
     return apexStr_new(tk2str[type].str, tk2str[type].len);
 }
 
@@ -189,10 +193,10 @@ void init_lexer(Lexer *lexer, const char *filename, const char *source) {
  * @param value The value of the token as a string.
  * @return A pointer to the newly created Token structure.
  */
-Token *create_token(Lexer *lexer, TokenType type, char *value) {
-    Token *token = mem_alloc(sizeof(Token));
+Token *create_token(Lexer *lexer, TokenType type, ApexString *str) {
+    Token *token = apexMem_alloc(sizeof(Token));
     token->type = type;
-    token->value = value;
+    token->str = str;
     token->srcloc = lexer->srcloc;;
     return token;
 }
@@ -293,13 +297,11 @@ static void skip_comments(Lexer *lexer) {
  *
  * @param lexer A pointer to the Lexer structure to update.
  * @return A pointer to a newly allocated Token structure with
- *         type TOKEN_INT or TOKEN_FLT, containing the number as a
+ *         type TOKEN_INT or TOKEN_DBL, containing the number as a
  *         string, or NULL if the function encounters an error.
  */
 static Token *scan_num(Lexer *lexer) {
     int start = lexer->position - 1;
-    int len;
-    char *num;
     TokenType token_type = TOKEN_INT;
 
     while (isdigit(peek(lexer))) {
@@ -307,15 +309,15 @@ static Token *scan_num(Lexer *lexer) {
     }
 
     if (peek(lexer) == '.') {
-        token_type = TOKEN_FLT;
+        token_type = TOKEN_DBL;
         advance(lexer);
         while (isdigit(peek(lexer))) {
             advance(lexer);
         }
     }
 
-    len = lexer->position - start;
-    num = apexStr_new(lexer->source + start, len);
+    int len = lexer->position - start;
+    ApexString *num = apexStr_new(lexer->source + start, len);
     return create_token(lexer, token_type, num);
 }
 
@@ -334,15 +336,13 @@ static Token *scan_num(Lexer *lexer) {
  */
 static Token *scan_ident(Lexer *lexer) {
     int start = lexer->position - 1;
-    int len;
-    char *ident;
 
     while (isalnum(peek(lexer)) || peek(lexer) == '_') {
         advance(lexer);
     }
 
-    len = lexer->position - start;
-    ident = apexStr_new(lexer->source + start, len);
+    int len = lexer->position - start;
+    ApexString *ident = apexStr_new(lexer->source + start, len);
 
     if (ident == IF_STR) {
         return create_token(lexer, TOKEN_IF, ident);
@@ -385,22 +385,47 @@ static Token *scan_ident(Lexer *lexer) {
  *         function encounters an error.
  */
 static Token *scan_str(Lexer *lexer) {
-    int start = lexer->position - 1;
-    int len;
-    char *str;
+    int start = lexer->position;
+    char *buffer = apexMem_alloc(lexer->length - start);
+    int i = 0;
 
-    if (lexer->source[start] != '"') {    
-        while (peek(lexer) != '"') {
-            advance(lexer);
-            if (peek(lexer) == '\\') {
-                advance(lexer);
+    while (peek(lexer) != '"' && peek(lexer) != '\0') { 
+        char c = advance(lexer);
+        if (c == '\\') { // Handle escape sequences.
+            char next = advance(lexer);
+            switch (next) {
+            case 'n':
+                buffer[i++] = '\n';
+                break;
+            case 't':
+                buffer[i++] = '\t';
+                break;
+            case 'r':
+                buffer[i++] = '\r';
+                break;
+            case '\\':
+                buffer[i++] = '\\';
+                break;
+            case '"':
+                buffer[i++] = '"';
+                break;
+            default:                
+                buffer[i++] = next;
+                break;
             }
+        } else {
+            buffer[i++] = c;
         }
-        advance(lexer);
     }
+
+    if (peek(lexer) == '"') {
+        advance(lexer); // Consume closing quote.
+    } else {
+        apexErr_syntax(lexer, "Unterminated string literal.");
+    }
+    buffer[i] = '\0';
     
-    len = lexer->position - start - 1;
-    str = apexStr_new(lexer->source + start, len);
+    ApexString *str = apexStr_save(buffer, i);
     return create_token(lexer, TOKEN_STR, str);
 }
 
@@ -421,7 +446,6 @@ static Token *scan_str(Lexer *lexer) {
  *         syntax error is encountered.
  */
 Token *get_next_token(Lexer *lexer) {
-    char c;
     skip_whitespace(lexer);
     skip_comments(lexer);
 
@@ -429,7 +453,7 @@ Token *get_next_token(Lexer *lexer) {
         return create_token(lexer, TOKEN_EOF, apexStr_new("EOF", 3));
     }
 
-    c = advance(lexer);
+    char c = advance(lexer);
 
     if (isalpha(c)) {
         return scan_ident(lexer);
@@ -440,145 +464,89 @@ Token *get_next_token(Lexer *lexer) {
 
     switch (c) {
     case '"':
-        advance(lexer);
+        
         return scan_str(lexer);
     case '=':
         if (peek(lexer) == '=') {
             advance(lexer);
-            return create_token(
-                lexer, TOKEN_EQUAL_EQUAL, 
-                (char *)EQUAL_EQUAL_STR);
+            return create_token(lexer, TOKEN_EQUAL_EQUAL,  EQUAL_EQUAL_STR);
         } else if (peek(lexer) == '>') {
             advance(lexer);
-            return create_token(
-                lexer, TOKEN_ARROW,
-                (char *)ARROW_STR);
+            return create_token(lexer, TOKEN_ARROW, ARROW_STR);
         }
-        return create_token(
-            lexer, TOKEN_EQUAL,
-            (char *)EQUAL_STR);      
+        return create_token(lexer, TOKEN_EQUAL, EQUAL_STR);      
     case '+':
         if (peek(lexer) == '+') {
             advance(lexer);
-            return create_token(
-                lexer, TOKEN_PLUS_PLUS,
-                (char *)PLUS_PLUS_STR);
+            return create_token(lexer, TOKEN_PLUS_PLUS, PLUS_PLUS_STR);
         } else if (peek(lexer) == '=') {
             advance(lexer);
-            return create_token(
-                lexer, TOKEN_PLUS_EQUAL, 
-                (char *)PLUS_EQUAL_STR);
+            return create_token(lexer, TOKEN_PLUS_EQUAL, PLUS_EQUAL_STR);
         }
-        return create_token(
-            lexer, TOKEN_PLUS,
-            (char *)PLUS_STR);
+        return create_token(lexer, TOKEN_PLUS, PLUS_STR);
     case '-':
         if (peek(lexer) == '-') {
             advance(lexer);
-            return create_token(
-                lexer, TOKEN_MINUS_MINUS,
-                (char *)MINUS_MINUS_STR);
+            return create_token(lexer, TOKEN_MINUS_MINUS, MINUS_MINUS_STR);
         } else if (peek(lexer) == '=') {
             advance(lexer);
-            return create_token(
-                lexer, TOKEN_MINUS_EQUAL,
-                (char *)MINUS_EQUAL_STR);
+            return create_token(lexer, TOKEN_MINUS_EQUAL, MINUS_EQUAL_STR);
         }
-        return create_token(
-            lexer, TOKEN_MINUS, 
-            (char *)MINUS_STR);
+        return create_token(lexer, TOKEN_MINUS, MINUS_STR);
     case '*': 
-        return create_token(
-            lexer, TOKEN_STAR, 
-            (char *)STAR_STR);
+        return create_token(lexer, TOKEN_STAR, STAR_STR);
     case '/': 
-        return create_token(
-            lexer, TOKEN_SLASH, 
-            (char *)SLASH_STR);
+        return create_token(lexer, TOKEN_SLASH, SLASH_STR);
     case '(': 
-        return create_token(
-            lexer, TOKEN_LPAREN, 
-            (char *)LPAREN_STR);
+        return create_token(lexer, TOKEN_LPAREN, LPAREN_STR);
     case ')': 
-        return create_token(
-            lexer, TOKEN_RPAREN, 
-            (char *)RPAREN_STR);
+        return create_token(lexer, TOKEN_RPAREN, RPAREN_STR);
     case '{': 
-        return create_token(
-            lexer, TOKEN_LBRACE, 
-            (char *)LBRACE_STR);
+        return create_token(lexer, TOKEN_LBRACE, LBRACE_STR);
     case '}': 
-        return create_token(
-            lexer, TOKEN_RBRACE, 
-            (char *)RBRACE_STR);
+        return create_token(lexer, TOKEN_RBRACE, RBRACE_STR);
     case '[':
-        return create_token(
-            lexer, TOKEN_LBRACKET, 
-            (char *)LBRACKET_STR);
+        return create_token(lexer, TOKEN_LBRACKET, LBRACKET_STR);
     case ']':
-        return create_token(
-            lexer, TOKEN_RBRACKET, 
-            (char *)RBRACKET_STR);    
+        return create_token(lexer, TOKEN_RBRACKET, RBRACKET_STR);    
     case ',': 
-        return create_token(
-            lexer, TOKEN_COMMA, 
-            (char *)COMMA_STR);
+        return create_token(lexer, TOKEN_COMMA, COMMA_STR);
     case ';': 
-        return create_token(
-            lexer, TOKEN_SEMICOLON, 
-            (char *)SEMICOLON_STR);
+        return create_token(lexer, TOKEN_SEMICOLON, SEMICOLON_STR);
     case '<':
         if (peek(lexer) == '=') {
             advance(lexer);
-            return create_token(
-                lexer, TOKEN_LESS_EQUAL, 
-                (char *)LESS_EQUAL_STR);
+            return create_token(lexer, TOKEN_LESS_EQUAL, LESS_EQUAL_STR);
         }
-        return create_token(
-            lexer, TOKEN_LESS, 
-            (char *)LESS_STR);
+        return create_token(lexer, TOKEN_LESS, LESS_STR);
     case '>':
         if (peek(lexer) == '=') {
             advance(lexer);
-            return create_token(
-                lexer, TOKEN_GREATER_EQUAL, 
-                (char *)GREATER_EQUAL_STR);
+            return create_token(lexer, TOKEN_GREATER_EQUAL, GREATER_EQUAL_STR);
         }
-        return create_token(
-            lexer, TOKEN_GREATER, 
-            (char *)GREATER_STR);    
+        return create_token(lexer, TOKEN_GREATER, GREATER_STR);    
     case '!': 
         if (peek(lexer) == '=') {
             advance(lexer);
-            return create_token(
-                lexer, TOKEN_NOT_EQUAL, 
-                (char *)NOT_EQUAL_STR);
+            return create_token(lexer, TOKEN_NOT_EQUAL, NOT_EQUAL_STR);
         }
-        return create_token(
-            lexer, TOKEN_NOT, 
-            (char *)NOT_STR);
+        return create_token(lexer, TOKEN_NOT, NOT_STR);
     case '&':
         if (peek(lexer) == '&') {
             advance(lexer);
-            return create_token(
-                lexer, TOKEN_AND, 
-                (char *)AND_STR);
+            return create_token(lexer, TOKEN_AND, AND_STR);
         }
-        return create_token(
-            lexer, TOKEN_AMP, 
-            (char *)AMP_STR);
+        return create_token(lexer, TOKEN_AMP, AMP_STR);
     case '|':
         if (peek(lexer) == '|') {
             advance(lexer);
-            return create_token(
-                lexer, TOKEN_OR, 
-                (char *)OR_STR);
+            return create_token(lexer, TOKEN_OR, OR_STR);
         }
-        return create_token(
-            lexer, TOKEN_PIPE, 
-            (char *)PIPE_STR);
+        return create_token(lexer, TOKEN_PIPE, PIPE_STR);
+    case '.':
+        return create_token(lexer, TOKEN_DOT, DOT_STR);
     }
 
-    apexErr_syntax(lexer->srcloc, "Unexpected character: '%c'", c);
+    apexErr_syntax(lexer, "Unexpected character: '%c'", c);
     return NULL;
 }

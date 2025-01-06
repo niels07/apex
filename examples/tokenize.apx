@@ -1,3 +1,11 @@
-fn tokenize(string) {
-    for (i = 0,)
+fn tokenize(str) {
+    for (i = 0; i < len(str); i++) {
+        write(str[i]);
+        if (i + 1 < len(str)) {
+            write(" ");
+        }
+    }
+    write("\n");
 }
+
+tokenize("test");

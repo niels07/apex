@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include "symbol.h"
 #include "mem.h"
 #include "string.h"
+#include "value.h"
 
 /**
  * Computes a hash value for a given string.
@@ -38,7 +40,7 @@ static unsigned int hash_string(const char *str) {
  */
 static void resize_symbol_table(SymbolTable *table) {
     unsigned int new_size = table->size * 2;
-    Symbol **symbols = mem_calloc(new_size, sizeof(Symbol *));
+    Symbol **symbols = apexMem_calloc(new_size, sizeof(Symbol *));
     int i;
     
     for (i = 0; i < table->size; i++) {
@@ -72,7 +74,7 @@ void init_symbol_table(SymbolTable *table) {
     table->size = 8;
     table->count = 0;
     table->resize_threshold = 0.75f;
-    table->symbols = mem_calloc(table->size, sizeof(Symbol *));
+    table->symbols = apexMem_calloc(table->size, sizeof(Symbol *));
 }
 
 
@@ -89,15 +91,12 @@ void init_symbol_table(SymbolTable *table) {
  * @return The address of the newly added symbol.
  */
 SymbolAddr add_symbol(SymbolTable *table, const char *name) {
-    unsigned int hash;
-    Symbol *symbol;
-
     if ((float)table->count / table->size > table->resize_threshold) {
         resize_symbol_table(table);
     }
     
-    hash = hash_string(name) % table->size;
-    symbol = mem_alloc(sizeof(Symbol));
+    unsigned int hash = hash_string(name) % table->size;
+    Symbol *symbol = apexMem_alloc(sizeof(Symbol));
     symbol->name = name;
     symbol->addr = hash_string(name);
     symbol->value = apexVal_makenull();
@@ -107,7 +106,6 @@ SymbolAddr add_symbol(SymbolTable *table, const char *name) {
     table->count++;
     return symbol->addr;
 }
-
 
 /**
  * Adds a new symbol to the table, with an initial value.
@@ -129,7 +127,7 @@ SymbolAddr add_symbol_with_value(SymbolTable *table, const char *name, ApexValue
     }
     
     hash = hash_string(name) % table->size;
-    symbol = mem_alloc(sizeof(Symbol));
+    symbol = apexMem_alloc(sizeof(Symbol));
     symbol->name = name;
     symbol->addr = hash_string(name);
     symbol->value = value;
@@ -140,31 +138,27 @@ SymbolAddr add_symbol_with_value(SymbolTable *table, const char *name, ApexValue
 }
 
 
-/**
- * Sets the value of a symbol in the symbol table.
- *
- * This function walks the linked list of symbols at the hashed index
- * and looks up the symbol by name. If the symbol is found, its value is
- * updated. If the symbol is not found, FALSE is returned.
- *
- * @param table The symbol table to search.
- * @param name The name of the symbol to update.
- * @param value The new value to assign to the symbol.
- * @return TRUE if the symbol was found and updated, FALSE if the symbol
- *         was not found.
- */
-Bool set_symbol_value(SymbolTable *table, const char *name, ApexValue value) {
+void apexSym_setglobal(SymbolTable *table, const char *name, ApexValue value) {
     unsigned int hash = hash_string(name) % table->size;
     Symbol *current = table->symbols[hash];
-    
+
     while (current) {
         if (current->name == name) {
+            ApexValue oldval = current->value;
+            apexVal_release(oldval);
+            apexVal_retain(value);
             current->value = value;
-            return TRUE;
+            return;
         }
         current = current->next;
     }
-    return FALSE;
+    Symbol *symbol = apexMem_alloc(sizeof(Symbol));
+    symbol->name = name;
+    symbol->addr = hash_string(name);
+    symbol->value = value;
+    symbol->next = table->symbols[hash];
+    table->symbols[hash] = symbol;
+    table->count++;
 }
 
 /**
@@ -213,7 +207,6 @@ ApexValue get_symbol_value_by_addr(SymbolTable *table, SymbolAddr addr) {
             current = current->next;
         }
     }
-    printf("symbol at %d not found\n", addr);
     return apexVal_makenull();
 }
 
@@ -230,18 +223,19 @@ ApexValue get_symbol_value_by_addr(SymbolTable *table, SymbolAddr addr) {
  * @return The value associated with the given symbol name, or a null value if
  *         no such symbol exists.
  */
-ApexValue get_symbol_value_by_name(SymbolTable *table, const char *name) {
+bool apexSym_getglobal(ApexValue *value, SymbolTable *table, const char *name) {
     unsigned int hash = hash_string(name) % table->size;
     Symbol *current = table->symbols[hash];
     
     while (current) {
         if (current->name == name) {
-            return current->value;
+            *value = current->value;
+            return true;
         }
         current = current->next;
     }
     
-    return apexVal_makenull();
+    return false;
 }
 
 /**
@@ -260,7 +254,7 @@ void free_symbol_table(SymbolTable *table) {
         Symbol *current = table->symbols[i];
         while (current) {
             Symbol *next = current->next;
-            free_value(current->value);
+            apexVal_release(current->value);
             free(current);
             current = next;
         }
@@ -281,9 +275,10 @@ void free_symbol_table(SymbolTable *table) {
  * @param stack The stack to push onto.
  */
 void push_scope(ScopeStack *stack) {
-    LocalScope *scope = mem_alloc(sizeof(LocalScope));
+    LocalScope *scope = apexMem_alloc(sizeof(LocalScope));
     init_symbol_table(&scope->table);
     scope->next = stack->top;
+    scope->next_addr = 1;
     stack->top = scope;
 }
 
@@ -321,37 +316,40 @@ SymbolAddr add_local_symbol(ScopeStack *stack, const char *name) {
     return -1;
 }
 
+
 /**
- * Sets the value of a local symbol in the stack.
+ * Sets the value of a local symbol in the current scope.
  *
- * This function walks the stack of scopes backwards, and searches each
- * scope's symbol table for a symbol with the given address. If such a
- * symbol is found, its value is set to the given value, and the function
- * returns TRUE. If the end of the stack is reached without finding the
- * symbol, the function returns FALSE.
+ * This function walks the linked list of symbols at the hashed index
+ * and looks up the symbol by name. If the symbol is found, its value is
+ * updated. If the symbol is not found, the symbol is added to the table.
  *
  * @param stack The stack to search.
- * @param addr The address of the local symbol to set the value of.
- * @param value The value to set the symbol to.
- * @return TRUE if the symbol was found and its value was set, FALSE otherwise.
+ * @param name The name of the symbol to update.
+ * @param value The value to assign to the symbol.
  */
-Bool set_local_symbol_value(ScopeStack *stack, SymbolAddr addr, ApexValue value) {
-    LocalScope *scope = stack->top;
-    while (scope) {
-        int i;
-        for (i = 0; i < scope->table.size; i++) {
-            Symbol *current = scope->table.symbols[i];
-            while (current) {
-                if (current->addr == addr) {
-                    current->value = value;
-                    return TRUE;
-                }
-                current = current->next;
-            }
+void apexSym_setlocal(ScopeStack *stack, const char *name, ApexValue value) {
+    LocalScope *scope = stack->top;     
+    unsigned int hash = hash_string(name) % scope->table.size;
+    Symbol *current = scope->table.symbols[hash];
+    while (current) {
+        if (current->name == name) {
+            ApexValue oldval = current->value;
+            apexVal_release(oldval);
+            apexVal_retain(value);
+            current->value = value;
+            return;
         }
-        scope = scope->next;
+        current = current->next;
     }
-    return FALSE;
+
+    Symbol *symbol = apexMem_alloc(sizeof(Symbol));
+    symbol->name = name;
+    symbol->addr = hash_string(name);
+    symbol->value = value;
+    symbol->next = scope->table.symbols[hash];
+    scope->table.symbols[hash] = symbol;
+    scope->table.count++;
 }
 
 /**
@@ -367,22 +365,20 @@ Bool set_local_symbol_value(ScopeStack *stack, SymbolAddr addr, ApexValue value)
  * @return The value associated with the given symbol address, or a null value
  *         if the symbol is not found.
  */
-ApexValue get_local_symbol_value(ScopeStack *stack, SymbolAddr addr) {
-    LocalScope *scope = stack->top;
-    while (scope) {
-        int i;
-        for (i = 0; i < scope->table.size; i++) {
-            Symbol *current = scope->table.symbols[i];
-            while (current) {
-                if (current->addr == addr) {
-                    return current->value;
-                }
-                current = current->next;
-            }
+bool apexSym_getlocal(ApexValue *value, ScopeStack *stack, const char *name) {
+    LocalScope *scope = stack->top; 
+    unsigned int hash = hash_string(name) % scope->table.size;
+    Symbol *current = scope->table.symbols[hash];
+    
+    while (current) {
+        if (current->name == name) {
+            *value = current->value;
+            return true;
         }
-        scope = scope->next;
+        current = current->next;
     }
-    return apexVal_makenull();
+    
+    return false;
 }
 
 /**
@@ -401,7 +397,6 @@ SymbolAddr get_local_symbol_address(ScopeStack *stack, const char *name) {
     LocalScope *scope = stack->top;
     while (scope != NULL) {
         int addr = get_symbol_address(&scope->table, name);
-        printf("[DEBUG] Lookup '%s' in local scope. Found? %s\n", name, addr != -1 ? "YES" : "NO");
         if (addr != -1) {
             return addr;
         }

@@ -5,7 +5,7 @@ print(arr1[1]);
 
 arr2 = [
     "a" => 2,
-    "b" => "test",
+    "b" => "xxx",
     4 => "x"
 ];
 print(arr2["a"]);
@@ -16,3 +16,6 @@ arr3 = ["a", "b", "c", "d"];
 for (i = 0; i < 4; i++) {
     print(arr3[i]);
 }
+
+arr2["b"] = "test";
+print(arr2["b"]);

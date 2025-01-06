@@ -5,129 +5,72 @@
 #include <string.h>
 #include "vm.h"
 #include "parser.h"
+#include "error.h"
 
+static const char *error_type_str[] = {
+    "Warning",
+    "Fatal error",
+    "Syntax error",
+    "Runtime error",
+    "Type error",
+    "Memory error",
+    "Name error",
+    "Argument error"
+};
 
 /**
- * Prints an error message to stderr with a newline at the end.
- * 
- * The message is formatted according to the given format string and
- * additional arguments, and is prepended with "Error: ".
+ * Prints an error message to stderr with the given error type and format
+ * string.
  *
- * @param fmt The format string of the error message.
- * @param ... The arguments to the format string.
+ * The error message will be prefixed with "Fatal Error: ", "Syntax Error: ",
+ * "Runtime Error: ", "Type Error: ", or "Memory Error: " depending on the
+ * given error type.
+ *
+ * If the given SrcLoc has a non-zero line number, the error message will
+ * include the line number and filename. Otherwise, only a colon will be
+ * printed.
+ *
+ * The given format string and arguments will be used to generate the error
+ * message.
+ *
+ * If errno is non-zero, the error message will include the error string for
+ * the current errno.
  */
-void apexErr_print(const char *fmt, ...) {
+void apexErr_error(SrcLoc srcloc, ErrorType type, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    fprintf(stderr, "Error: ");
+    fprintf(stderr, "%s",error_type_str[type]);
+    if (srcloc.lineno) {
+        fprintf(stderr,"(line %d, file %s): ", 
+        srcloc.lineno, 
+        srcloc.filename);
+    } else {
+        fprintf(stderr, ": ");
+    }
     vfprintf(stderr, fmt, args);
+    if (errno) {
+        fprintf(stderr, ": %s", strerror(errno));
+    }
     fprintf(stderr,"\n");
     va_end(args);
 }
 
 /**
- * Prints a fatal error message to stderr and terminates the program.
- * 
- * This function formats an error message according to the given format string
- * and additional arguments, prepends "Error: " to the message, and appends the
- * line number and filename from the provided ParseState. The message is 
- * printed to stderr with a newline at the end, and the program is then 
- * terminated with an EXIT_FAILURE status.
+ * Prints a stack trace to stderr of the given virtual machine.
  *
- * @param state The ParseState providing the line number and filename.
- * @param fmt The format string of the error message.
- * @param ... The arguments to the format string.
- */
-void apexErr_fatal(SrcLoc srcloc, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    fprintf(stderr, "Error: ");
-    vfprintf(stderr, fmt, args);
-    fprintf(stderr," on line %d in %s\n", srcloc.lineno, srcloc.filename);
-    va_end(args);
-    exit(EXIT_FAILURE);
-}
-
-/**
- * Prints an error message to stderr with a newline at the end, and a system
- * error message, and terminates the program.
- * 
- * This function formats an error message according to the given format string
- * and additional arguments, prepends "Error: " to the message, and appends the
- * line number and filename from the provided ParseState. Then it appends the
- * system error message from strerror(errno). The message is printed to stderr
- * with a newline at the end, and the program is then terminated with an
- * EXIT_FAILURE status.
+ * The stack trace will consist of one line per call frame, with the line
+ * number and filename of the call site. If the call site is the "main" fn,
+ * the filename will be "<main>" instead of the actual filename.
  *
- * @param state The ParseState providing the line number and filename.
- * @param fmt The format string of the error message.
- * @param ... The arguments to the format string.
+ * @param vm The virtual machine to print the stack trace of.
  */
-void apexErr_errno(SrcLoc srcloc, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    fprintf(stderr, "Error: ");
-    vfprintf(stderr, fmt, args);
-    fprintf(stderr," on line %d in %s: %s\n", 
-        srcloc.lineno, 
-        srcloc.filename, 
-        strerror(errno));
-    va_end(args);
-    exit(EXIT_FAILURE);
-}
-
-/**
- * Prints a syntax error message to stderr with a newline at the end. The
- * message is formatted according to fmt and the variable arguments following
- * it. The line number and filename are also included in the message.
- *
- * @param state The ParseState providing the line number and filename.
- * @param fmt The format string of the error message.
- * @param ... The arguments to the format string.
- */
-void apexErr_syntax(SrcLoc srcloc, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    fprintf(stderr, "Syntax Error: ");
-    vfprintf(stderr, fmt, args);
-    fprintf(stderr," on line %d in %s\n", srcloc.lineno, srcloc.filename);
-    va_end(args);
-}
-
-
-/**
- * Prints a runtime error message to stderr with a newline at the end. The
- * message is formatted according to fmt and the variable arguments following
- * it. The line number and filename are also included in the message. If the
- * call stack is not empty, a stack trace is also printed, including the
- * function name and line number of each call frame.
- *
- * @param vm The ApexVM instance, providing the current instruction and call
- *     stack.
- * @param fmt The format string of the error message.
- * @param ... The arguments to the format string.
- */
-void apexErr_runtime(ApexVM *vm, const char *fmt, ...) {
-    va_list args;
-    int i;
-
-    fprintf(
-        stderr, "Runtime Error (line %d, file %s): ", 
-        vm->ins->srcloc.lineno, 
-        vm->ins->srcloc.filename);
-
-    va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
-    va_end(args);
-
-    if (vm->call_stack_top <= 0) {
-        fprintf(stderr, "\n");
-        exit(EXIT_FAILURE);
+void apexErr_trace(ApexVM *vm) {
+    if (!vm->call_stack_top) {
+        return;
     }
+    fprintf(stderr, "Stack trace:\n");
 
-    fprintf(stderr, "\nStack trace:\n");
-
-    for (i = vm->call_stack_top - 1; i >= 0; i--) {
+    for (int i = vm->call_stack_top - 1; i >= 0; i--) {
         CallFrame *frame = &vm->call_stack[i];
         fprintf(
             stderr, "  at %s (line %d) in %s\n",
@@ -135,6 +78,4 @@ void apexErr_runtime(ApexVM *vm, const char *fmt, ...) {
             frame->srcloc.lineno,
             i == 0 ? "<main>" : frame->fn_name);
     }
-
-    exit(EXIT_FAILURE);
 }

@@ -8,10 +8,10 @@
  *
  * @return A pointer to the newly allocated memory.
  */
-void *mem_alloc(size_t size) {
+void *apexMem_alloc(size_t size) {
     void *p = malloc(size);
     if (!p) {
-        apexErr_print("out of memory, failed to allocate %d bytes", size);
+        apexErr_mem("failed to allocate %d bytes", size);
         exit(EXIT_FAILURE);
     }
     return p;
@@ -20,7 +20,7 @@ void *mem_alloc(size_t size) {
 /**
  * Allocate an array of the given size, or abort if out of memory.
  *
- * This function is the same as mem_alloc, but the memory is zeroed
+ * This function is the same as apexMem_alloc, but the memory is zeroed
  * after allocation.
  *
  * @param count The number of elements in the array.
@@ -28,10 +28,10 @@ void *mem_alloc(size_t size) {
  *
  * @return A pointer to the newly allocated array.
  */
-void *mem_calloc(size_t count, size_t size) {
+void *apexMem_calloc(size_t count, size_t size) {
     void *p = calloc(count, size);
     if (!p) {
-        apexErr_print("out of memory, failed to allocate %d bytes", size);
+        apexErr_mem("failed to allocate %d bytes", size);
         exit(EXIT_FAILURE);
     }
     return p;
@@ -45,10 +45,10 @@ void *mem_calloc(size_t count, size_t size) {
  *
  * @return A pointer to the newly allocated memory.
  */
-void *mem_realloc(void *p, size_t size) {
+void *apexMem_realloc(void *p, size_t size) {
     void *q = realloc(p, size);
     if (!q) {
-        apexErr_print("out of memory, failed to reallocate %d bytes", size);
+        apexErr_mem("failed to reallocate %d bytes", size);
         exit(EXIT_FAILURE);
     }
     return q;

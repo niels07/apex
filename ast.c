@@ -8,7 +8,7 @@ static const char *get_ast_node_type_name(ASTNodeType type) {
     switch (type) {
         case AST_ERROR: return "AST_ERROR";
         case AST_INT: return "AST_INT";
-        case AST_FLT: return "AST_FLT";
+        case AST_DBL: return "AST_DBL";
         case AST_STR: return "AST_STR";
         case AST_BOOL: return "AST_BOOL";
         case AST_BINARY_EXPR: return "AST_BINARY_EXPR";
@@ -31,8 +31,14 @@ static const char *get_ast_node_type_name(ASTNodeType type) {
         case AST_ARRAY: return "AST_ARRAY";
         case AST_ARRAY_ACCESS: return "AST_ARRAY_ACCESS";
         case AST_KEY_VALUE_PAIR: return "AST_KEY_VALUE_PAIR";
-        default: return "UNKNOWN_AST_NODE_TYPE";
+        case AST_INCLUDE: return "AST_INCLUDE";
+        case AST_MEMBER_ACCESS: return "AST_MEMBER_ACCESS";
+        case AST_MEMBER_FN: return "AST_MEMBER_FN";
+        case AST_CTOR: return "AST_CTOR";
+        case AST_NEW: return "AST_NEW";
+        case AST_OBJECT: return "AST_OBJECT";
     }
+    return "UNKNOWN_AST_NODE_TYPE";
 }
 
 static void print_indent(int indent) {
@@ -53,7 +59,7 @@ void print_ast(AST *node, int indent) {
     printf("Node Type: %s (%d)", get_ast_node_type_name(node->type), node->type);
     
     if (node->value.strval != NULL && node->type != AST_FN_DECL && node->type != AST_IF && node->type != AST_FOR) {
-        printf(", Value: \"%s\"", node->value.strval);
+        printf(", Value: \"%s\"", node->value.strval->value);
     }
 
     if (node->srcloc.lineno > 0) {
@@ -96,12 +102,13 @@ void print_ast(AST *node, int indent) {
  *
  * @return A pointer to the newly allocated abstract syntax tree node.
  */
-AST *create_ast_node(ASTNodeType type, AST *left, AST *right, ASTValue value, SrcLoc srcloc) {
-    AST *node = mem_alloc(sizeof(AST));
+AST *create_ast_node(ASTNodeType type, AST *left, AST *right, ASTValue value, bool val_is_ast, SrcLoc srcloc) {
+    AST *node = apexMem_alloc(sizeof(AST));
     node->type = type;
     node->left = left;
     node->right = right;
     node->value = value;
+    node->val_is_ast = val_is_ast;
     node->srcloc = srcloc;
     return node;
 }
@@ -119,14 +126,15 @@ ASTValue ast_value_zero(void) {
     return value;
 }
 
+
 /**
- * Creates an ASTValue with the given string value.
+ * Creates an ASTValue with the given string as the value.
  *
- * @param str The string value to associate with the ASTValue.
+ * @param str The string to associate with the ASTValue.
  *
- * @return An ASTValue with the given string value.
+ * @return An ASTValue with the given string as the value.
  */
-ASTValue ast_value_str(char *str) {
+ASTValue ast_value_str(ApexString *str) {
     ASTValue value;
     value.strval = str;
     return value;
@@ -145,27 +153,6 @@ ASTValue ast_value_ast(AST *ast) {
     return value;
 }
 
-
-/**
- * Creates an abstract syntax tree node that represents an error.
- *
- * This function creates an abstract syntax tree node of type AST_ERROR
- * and initializes it with the string value "error". This node has no
- * children and is used to represent a syntax error in an abstract
- * syntax tree.
- *
- * @return A pointer to the newly created abstract syntax tree node that
- *         represents an error.
- */
-AST *create_error_ast() {
-    AST *node = mem_alloc(sizeof(AST));
-    node->type = AST_ERROR;
-    node->left = NULL;
-    node->right = NULL;
-    node->value = ast_value_str("error");
-    return node;
-}
-
 /**
  * Frees an abstract syntax tree node and all its children.
  *
@@ -179,6 +166,9 @@ void free_ast(AST *node) {
     if (node) {
         free_ast(node->left);
         free_ast(node->right);
+        if (node->val_is_ast) {
+            free_ast(node->value.ast_node);
+        }
         free(node);
     }
 }

@@ -1,12 +1,14 @@
 #ifndef AST_H
 #define AST_H
 
+#include <stdbool.h>
 #include "srcloc.h"
+#include "string.h"
 
 typedef enum {
     AST_ERROR,
     AST_INT,
-    AST_FLT,
+    AST_DBL,
     AST_STR,    
     AST_BOOL,
     AST_BINARY_EXPR,
@@ -29,11 +31,16 @@ typedef enum {
     AST_BREAK,
     AST_CONTINUE,
     AST_STATEMENT,
-    AST_INCLUDE
+    AST_INCLUDE,
+    AST_MEMBER_ACCESS,
+    AST_MEMBER_FN,
+    AST_CTOR,
+    AST_NEW,
+    AST_OBJECT
 } ASTNodeType;
 
 typedef union {
-    char *strval; 
+    ApexString *strval; 
     struct AST *ast_node;
 } ASTValue;
 
@@ -43,14 +50,18 @@ typedef struct AST {
     struct AST *right;
     ASTValue value;
     SrcLoc srcloc;
+    bool val_is_ast;
 } AST;
 
+#define CREATE_AST_STR(type, left, right, value, srcloc) create_ast_node(type, left, right, ast_value_str(value), false, srcloc)
+#define CREATE_AST_AST(type, left, right, value, srcloc) create_ast_node(type, left, right, ast_value_ast(value), true, srcloc)
+#define CREATE_AST_ZERO(type, left, right, srcloc) create_ast_node(type, left, right, ast_value_zero(), false, srcloc)
+
 extern void print_ast(AST *node, int indent);
-extern AST *create_ast_node(ASTNodeType type, AST *left, AST *right, ASTValue value, SrcLoc srcloc);
+extern AST *create_ast_node(ASTNodeType type, AST *left, AST *right, ASTValue value, bool val_is_ast, SrcLoc srcloc);
 extern ASTValue ast_value_zero(void);
-extern ASTValue ast_value_str(char *str);
+extern ASTValue ast_value_str(ApexString *str);
 extern ASTValue ast_value_ast(AST *ast);
-extern AST *create_error_ast() ;
 extern void free_ast(AST *node);
 extern void print_ast(AST *node, int indent);
 

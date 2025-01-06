@@ -1,0 +1,17 @@
+Person = { name = "", gender = ""};
+
+fn Person.new(name, gender) {
+    this.name = name;
+    this.gender = gender;
+}
+
+fn Person.talk() {
+    print("Hello, my name is " + this.name + " and I'm a " + this.gender + ".");
+}
+
+person = Person.new("Joey", "male");
+person.talk();
+
+person.name = "Lisa";
+person.gender = "female";
+person.talk();

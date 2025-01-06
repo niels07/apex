@@ -6,22 +6,22 @@
 #include "util.h"
 #include "error.h"
 
-void apex_write(ApexVM *vm) {
+void writestr(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
-    printf("%s", apexStr_valtostr(value));
+    printf("%s", apexVal_tostr(value));
 }
 
-void apex_print(ApexVM *vm) {
-    apex_write(vm);
+void printstr(ApexVM *vm) {
+    writestr(vm);
     printf("\n");
 }
 
-void apex_read(ApexVM *vm) {
-    char *line = apexStr_readline(stdin);
+void readstr(ApexVM *vm) {
+    ApexString *line = apexUtl_readline(stdin);
     apexVM_pushval(vm, apexVal_makestr(line));
 }
 
-void apex_int(ApexVM *vm) {
+void valtoint(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_BOOL:
@@ -36,90 +36,104 @@ void apex_int(ApexVM *vm) {
         apexVM_pushint(vm, (int)apexVal_flt(value));
         break;
 
+    case APEX_VAL_DBL:
+        apexVM_pushint(vm, (int)apexVal_dbl(value));
+        break;
+
     case APEX_VAL_STR: {
         int i;
-        if (apexUtl_stoi(&i, apexVal_str(value))) {
+        if (apexUtl_stoi(&i, apexVal_str(value)->value)) {
             apexVM_pushint(vm, i);
         } else {
-            apexErr_fatal(
-                vm->ins->srcloc,
-                "cannot convert string \"%s\" to int", 
-                value.strval);
+            apexErr_fatal(vm->ins->srcloc,"cannot convert string \"%s\" to int", apexVal_str(value)->value);
         }
         break;
     }
 
-    case APEX_VAL_FN: 
-        apexErr_fatal(vm->ins->srcloc, "cannot convert fn to int");
-        break;
-
-    case APEX_VAL_ARR: 
-        apexErr_fatal(vm->ins->srcloc, "cannot convert array to int");
-        break;
-
-    case APEX_VAL_NULL:
-        apexErr_fatal(vm->ins->srcloc, "cannot convert null to int");
+    default:
+        apexErr_type(vm, "cannot convert %s to int", apexVal_typestr(value));
         break;
     }
 }
 
-void apex_str(ApexVM *vm) {
+static void valtostr(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
-    char *str = apexStr_valtostr(value);
+    char *str = apexVal_tostr(value);
     apexVM_pushstr(vm, str);
 }
 
-void apex_flt(ApexVM *vm) {
+void valtoflt(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_INT:
         apexVM_pushflt(vm, (float)apexVal_int(value));
         break;
-
     case APEX_VAL_FLT:
         apexVM_pushval(vm, value);
         break;
-
+    case APEX_VAL_DBL:
+        apexVM_pushflt(vm, (float)apexVal_dbl(value));
+        break;
     case APEX_VAL_STR: {
         float f;
-        if (apexUtl_stof(&f, apexVal_str(value))) {
+        if (apexUtl_stof(&f, apexVal_str(value)->value)) {
             apexVM_pushflt(vm, f);
         } else {
-            apexErr_fatal(
-                vm->ins->srcloc,
-                "cannot convert string \"%s\" to flt", 
-                value.strval);
+            apexErr_type(vm, "cannot convert string \"%s\" to flt", apexVal_str(value)->value);
         }
         break;
     }
-
    case APEX_VAL_BOOL:
         apexVM_pushflt(vm, apexVal_bool(value));
         break;
 
-    case APEX_VAL_FN: 
-        apexErr_fatal(vm->ins->srcloc, "cannot convert fn to flt");
-        break;
-
-    case APEX_VAL_ARR: 
-        apexErr_fatal(vm->ins->srcloc, "cannot convert array to flt");
-        break;
-
-    case APEX_VAL_NULL:
-        apexErr_fatal(vm->ins->srcloc, "cannot convert null to flt");
+    default:
+        apexErr_type(vm, "cannot convert %s to flt", apexVal_typestr(value));
         break;
     }
 }
 
-void apex_bool(ApexVM *vm) {
+void valtodbl(ApexVM *vm) {
+    ApexValue value = apexVM_pop(vm);
+    switch (apexVal_type(value)) {
+    case APEX_VAL_INT:
+        apexVM_pushdbl(vm, (double)apexVal_int(value));
+        break;
+    case APEX_VAL_FLT:
+        apexVM_pushdbl(vm, (double)apexVal_flt(value));
+        break;
+    case APEX_VAL_DBL:
+        apexVM_pushval(vm, value);
+        break;
+    case APEX_VAL_STR: {
+        double d;
+        if (apexUtl_stod(&d, apexVal_str(value)->value)) {
+            apexVM_pushdbl(vm, d);
+        } else {
+            apexErr_type(vm, "cannot convert string \"%s\" to dbl", apexVal_str(value)->value);
+        }
+        break;
+    }
+   case APEX_VAL_BOOL:
+        apexVM_pushdbl(vm, apexVal_bool(value));
+        break;
+    default:
+        apexErr_type(vm, "cannot convert %s to dbl", apexVal_typestr(value));
+    }
+}
+
+void valtobool(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_INT:
     case APEX_VAL_FLT:
+    case APEX_VAL_DBL:
     case APEX_VAL_STR:
     case APEX_VAL_FN:
     case APEX_VAL_ARR:
-        apexVM_pushbool(vm, TRUE);
+    case APEX_VAL_TYPE:
+    case APEX_VAL_OBJ:
+        apexVM_pushbool(vm, true);
         break;
 
     case APEX_VAL_BOOL:
@@ -127,18 +141,37 @@ void apex_bool(ApexVM *vm) {
         break;
 
     case APEX_VAL_NULL:
-        apexVM_pushbool(vm, FALSE);
+        apexVM_pushbool(vm, false);
+        break;
+    }
+}
+
+static void len(ApexVM *vm) {
+    ApexValue value = apexVM_pop(vm);
+    switch (apexVal_type(value)) {
+    case APEX_VAL_ARR:
+        apexVM_pushint(vm, value.arrval->n);
+        break;
+
+    case APEX_VAL_STR:
+        apexVM_pushint(vm, apexVal_str(value)->len);
+        break;
+
+    default:
+        apexErr_type(vm, "cannot get length of %s", apexVal_typestr(value));
         break;
     }
 }
 
 StdLib apex_stdlib[] = {
-    { "write", apex_write },
-    { "print", apex_print },
-    { "read", apex_read },
-    { "int", apex_int },
-    { "flt", apex_flt },
-    { "str", apex_str },
-    { "bool", apex_bool },
+    { "write", writestr },
+    { "print", printstr },
+    { "read", readstr },
+    { "int", valtoint },
+    { "flt", valtoflt },
+    { "dbl", valtodbl },
+    { "str", valtostr },
+    { "bool", valtobool },
+    { "len", len },
     { NULL, NULL }
 };

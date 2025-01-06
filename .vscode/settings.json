@@ -20,6 +20,10 @@
         "hashtable.h": "c",
         "array.h": "c",
         "util.h": "c",
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "*.tcc": "c",
+        "stdlib.h": "c",
+        "symbol.h": "c",
+        "stdbool.h": "c"
     }
 }

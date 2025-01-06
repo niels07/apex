@@ -1,12 +1,12 @@
-include "math.apx"
+include "math.apx";
 
 cont = true;
 
 while (cont) {
 	write("enter first number: ");
-	a = flt(read());
+	a = dbl(read());
 	write("enter second number: ");
-	b = flt(read());
+	b = dbl(read());
 	print("1. add");
 	print("2. subtract");
 	print("3. multiply");

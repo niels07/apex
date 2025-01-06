@@ -1,11 +1,14 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <errno.h>
 #include <limits.h>
 #include <ctype.h>
 #include <float.h>
 #include <math.h>
 #include <stdarg.h>
-#include "bool.h"
+#include <stdbool.h>
+#include "mem.h"
+#include "string.h"
 
 /**
  * Converts a string to an integer.
@@ -13,44 +16,40 @@
  * This function attempts to parse the input string as a signed integer. It
  * supports optional leading '+' or '-' signs. If the conversion is successful,
  * the resulting integer value is stored in the location pointed to by 'out',
- * and the function returns TRUE. If the string is invalid or cannot be
- * converted, the function returns FALSE.
+ * and the function returns true. If the string is invalid or cannot be
+ * converted, the function returns false.
  *
  * @param out A pointer to an int where the result will be stored if conversion
  *            is successful.
  * @param str The input string to be converted to an int.
- * @return TRUE if the conversion is successful, FALSE otherwise.
+ * @return true if the conversion is successful, false otherwise.
  */
-Bool apexUtl_stoi(int *out, const char *str) {
-    int result = 0;
-    int sign = 1;
-
-    if (!str || *str == '\0') {
-        return FALSE;
+bool apexUtl_stoi(int *out, const char *str) {
+     if (!str || !*str) {
+        return false;
     }
 
-    if (*str == '-') {
-        sign = -1;
-        str++;
-    } else if (*str == '+') {
-        str++;
+    char *endptr;
+    errno = 0;
+
+    // Convert the string to int
+    long value = strtol(str, &endptr, 10); // Base 10 for integer conversion
+
+    if (errno == ERANGE || value > INT_MAX || value < INT_MIN) {
+        // Overflow or underflow occurred
+        return false;
+    }
+    if (endptr == str) {
+        // No digits were found
+        return false;
+    }
+    if (*endptr != '\0') {
+        // Additional invalid characters after number
+        return false;
     }
 
-    while (*str) {
-        if (*str < '0' || *str > '9') {
-            return FALSE;
-        }
-
-        if (result > (INT_MAX - (*str - '0')) / 10) {
-            return FALSE;
-        }
-
-        result = result * 10 + (*str - '0');
-        str++;
-    }
-
-    *out = result * sign;
-    return TRUE;
+    *out = (int)value;
+    return true;
 }
 
 /**
@@ -60,115 +59,107 @@ Bool apexUtl_stoi(int *out, const char *str) {
  * It supports optional leading '+' or '-' signs and decimal points. Exponential
  * notation with 'e' or 'E' is also supported. If the conversion is successful,
  * the resulting float value is stored in the location pointed to by 'out', and
- * the function returns TRUE. If the string is invalid or cannot be converted,
- * the function returns FALSE.
+ * the function returns true. If the string is invalid or cannot be converted,
+ * the function returns false.
  *
  * @param out A pointer to a float where the result will be stored if conversion is successful.
  * @param str The input string to be converted to a float.
- * @return TRUE if the conversion is successful, FALSE otherwise.
+ * @return true if the conversion is successful, false otherwise.
  */
-Bool apexUtl_stof(float *out, const char *str) {
-    float result = 0.0f;
-    int sign = 1;
-    Bool has_decimal = FALSE;
-    float decimal_factor = 0.1f;
-
-    if (str == NULL || *str == '\0') {
-        return FALSE;
+bool apexUtl_stof(float *out, const char *str) {
+    if (!str || !*str) {
+        return false;
     }
-
-    if (*str == '-') {
-        sign = -1;
-        str++;
-    } else if (*str == '+') {
-        str++;
+    char *endptr;
+    errno = 0;
+    float value = strtof(str, &endptr);
+    if (errno == ERANGE) {
+        // Overflow or underflow occurred
+        return false;
     }
-
-    while (*str) {
-        if (*str == '.') {
-            if (has_decimal) {
-                return FALSE;
-            }
-            has_decimal = TRUE;
-            str++;
-            continue;
-        }
-
-        if (*str >= '0' && *str <= '9') {
-            if (has_decimal) {
-                result += (*str - '0') * decimal_factor;
-                decimal_factor *= 0.1f;
-            } else {
-                if (result > (FLT_MAX - (*str - '0')) / 10) {
-                    return FALSE;
-                }
-                result = result * 10 + (*str - '0');
-            }
-        } else {
-            break;
-        }
-        str++;
+    if (str == endptr) {
+        // No digits were found
+        return false;
     }
-
-    if (*str == 'e' || *str == 'E') {
-        int exp_sign = 1;
-        int exponent = 0;
-
-        str++;
-        if (*str == '-') {
-            exp_sign = -1;
-            str++;
-        } else if (*str == '+') {
-            str++;
-        }
-
-        if (!isdigit(*str)) {
-            return FALSE;
-        }
-
-        while (*str >= '0' && *str <= '9') {
-            exponent = exponent * 10 + (*str - '0');
-            str++;
-        }
-
-        result *= pow(10.0f, exp_sign * exponent);
+    if (*endptr != '\0') {
+        // Additional invalid characters after number
+        return false;
     }
-
-    if (*str) {
-        return FALSE;
-    }
-
-    *out = sign * result;
-    return TRUE;
+    *out = value;
+    return true;
 }
 
 /**
- * A safer version of snprintf that will not write past the end of the given buffer.
+ * Converts a string to a double.
  *
- * @param buffer The buffer to write to.
- * @param size The size of the buffer to write to.
- * @param format The format string to use.
- * @param ... The arguments to the format string.
+ * This function attempts to parse the input string as a double. It supports
+ * optional leading '+' or '-' signs and decimal points. Exponential notation
+ * with 'e' or 'E' is also supported. If the conversion is successful, the
+ * resulting double value is stored in the location pointed to by 'out', and the
+ * function returns true. If the string is invalid or cannot be converted, the
+ * function returns false.
  *
- * @return The number of characters that were written.
+ * @param out A pointer to a double where the result will be stored if conversion is successful.
+ * @param str The input string to be converted to a double.
+ * @return true if the conversion is successful, false otherwise.
  */
-int apexUtl_snprintf(char *buffer, size_t size, const char *format, ...) {
-    va_list args;
-    int written;
-    char temp[1024];
+bool apexUtl_stod(double *out, const char *str) {
+    if (!str || !*str) {
+        return false;
+    }
+    char *endptr;
+    errno = 0;
+    double value = strtod(str, &endptr);
+    if (errno == ERANGE) {
+        // Overflow or underflow occurred
+        return false;
+    }
+    if (str == endptr) {
+        // No digits were found
+        return false;
+    }
+    if (*endptr != '\0') {
+        // Additional invalid characters after number
+        return false;
+    }
+    *out = value;
+    return true;
+}
 
-    va_start(args, format);    
-    written = vsprintf(temp, format, args);
+/**
+ * Reads a line of text from the given stream and returns a pointer to it.
+ *
+ * This function dynamically allocates memory to store the line read from
+ * the input stream. It continues reading characters until a newline or EOF
+ * is encountered. If the end of the file is reached without reading any
+ * characters, the function returns NULL. Otherwise, it returns a pointer
+ * to the saved line in the string table. Memory is reallocated as needed
+ * to accommodate longer lines.
+ *
+ * @param stream The file stream to read from.
+ * @return A pointer to the line of text that was read, or NULL if end of
+ *         file was encountered without reading any characters.
+ */
+ApexString *apexUtl_readline(FILE *stream) {
+    size_t size = 128;
+    size_t len = 0;
+    char *buffer = apexMem_alloc(size);
+    int c;
 
-    if (size > 0) {
-        size_t to_copy = (size - 1 < (size_t)written) ? size - 1 : (size_t)written;
-        size_t i;
-        for (i = 0; i < to_copy; i++) {
-            buffer[i] = temp[i];
+    while ((c = getc(stream)) != '\n' && c != EOF) {
+        if (len + 1 >= size) {
+            size *= 2;
+            buffer = apexMem_realloc(buffer, size);
         }
-        buffer[to_copy] = '\0';
+        buffer[len++] = c;
     }
 
-    va_end(args);
-    return written;
+    if (len == 0 && c == EOF) {
+        free(buffer);
+        return NULL;
+    }
+
+    buffer[len] = '\0';
+
+    return apexStr_save(buffer, len);
 }

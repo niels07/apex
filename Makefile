@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -Werror -Wno-implicit-fallthrough -ansi -g
+CFLAGS = -Wall -Wextra -Werror -Wno-implicit-fallthrough -std=c99 -g
 BIN = apex
 OBJ = main.o error.o lexer.o mem.o string.o ast.o parser.o value.o symbol.o vm.o compiler.o stdlib.o util.o
 

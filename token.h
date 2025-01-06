@@ -1,12 +1,13 @@
 #ifndef TOKEN_H
 #define TOKEN_H
 
+#include "string.h"
 #include "srcloc.h"
 
 typedef enum {
     TOKEN_IDENT,
     TOKEN_INT,
-    TOKEN_FLT,
+    TOKEN_DBL,
     TOKEN_STR,
     TOKEN_IF,
     TOKEN_ELIF,
@@ -51,12 +52,13 @@ typedef enum {
     TOKEN_FALSE,
     TOKEN_ARROW,
     TOKEN_INCLUDE,
+    TOKEN_DOT,
     TOKEN_EOF
 } TokenType;
 
 typedef struct {
     TokenType type;
-    char *value;
+    ApexString *str;
     SrcLoc srcloc;
 } Token;
 

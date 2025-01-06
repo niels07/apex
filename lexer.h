@@ -1,6 +1,8 @@
 #ifndef LEXER_H
 #define LEXER_H
 
+#include <stdbool.h>
+#include "string.h"
 #include "token.h"
 #include "srcloc.h"
 
@@ -11,7 +13,7 @@ typedef struct {
     SrcLoc srcloc;
 } Lexer;
 
-extern char *get_token_str(TokenType type);
+extern ApexString *get_token_str(TokenType type);
 extern void init_lexer(Lexer *lexer, const char *filename, const char *source);
 extern Token *get_next_token(Lexer *lexer);
 extern void free_token(Token *token);
