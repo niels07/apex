@@ -8,6 +8,7 @@
 #include "vm.h"
 #include "value.h"
 #include "compiler.h"
+#include "lib.h"
 
 static void print_usage(void) {
     printf("Usage: apex [file]\n");
@@ -40,6 +41,7 @@ int main(int argc, char *argv[]) {
 
     char *source = read_file(argv[1]);
     init_string_table();
+    apexLib_init();
 
     Lexer lexer;
     init_lexer(&lexer, argv[1], source);

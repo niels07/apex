@@ -376,18 +376,28 @@ static void compile_function_call(ApexVM *vm, AST *node) {
     ApexString *fn_name = node->left->value.strval;
     int argc = 0;
     UPDATE_SRCLOC(vm, node);
-
-    for (int i = 0; apex_stdlib[i].name; i++) {
-        if (strcmp(apex_stdlib[i].name, fn_name->value) == 0) {
-            compile_argument_list(vm, node->right, &argc);
-            EMIT_OP_INT(vm, OP_CALL_LIB, i);
-            return;
-        }
-    }
-
     compile_argument_list(vm, node->right, &argc);
     EMIT_OP_STR(vm, OP_GET_GLOBAL, fn_name);
     EMIT_OP_INT(vm, OP_CALL, argc);
+}
+
+/**
+ * Compiles an AST node representing a library function call to bytecode.
+ *
+ * This function compiles the arguments and the library and function names,
+ * and adds the library call to the instruction chunk.
+ *
+ * @param vm A pointer to the virtual machine structure containing the
+ *           instruction chunk.
+ * @param node The AST node representing the library call to be compiled.
+ */
+static void compile_library_call(ApexVM *vm, AST *node) {
+    int argc = 0;
+    compile_argument_list(vm, node->value.ast_node, &argc);
+
+    EMIT_OP_STR(vm, OP_PUSH_STR, node->left->value.strval); // Library name
+    EMIT_OP_STR(vm, OP_PUSH_STR, node->right->value.strval);       // Function name
+    EMIT_OP_INT(vm, OP_CALL_LIB, argc);
 }
 
 /**
@@ -620,6 +630,7 @@ static void compile_object_literal(ApexVM *vm, AST *node) {
  * @param node The AST node representing the expression to be compiled.
  */
 static void compile_expression(ApexVM *vm, AST *node, bool result_used) {
+    printf("compile_expression type: %d\n", node->type);
     UPDATE_SRCLOC(vm, node);
     switch (node->type) {
     case AST_INT:
@@ -719,6 +730,10 @@ static void compile_expression(ApexVM *vm, AST *node, bool result_used) {
         } else {
             compile_function_call(vm, node);
         }
+        break;
+
+    case AST_LIB_CALL:
+        compile_library_call(vm, node);
         break;
 
     case AST_NEW:

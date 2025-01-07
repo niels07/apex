@@ -11,6 +11,26 @@
 #include "string.h"
 
 /**
+ * Computes a hash value for a given string.
+ *
+ * This function takes a string and returns a hash value based on its contents.
+ * The hash value is computed by iterating over each character in the string
+ * and combining them using a combination of bitwise shifting and addition.
+ * The resulting hash value is then returned.
+ *
+ * @param str The input string to be hashed.
+ * @return An unsigned integer representing the hash value of the input string.
+ */
+unsigned int apexUtl_hash(const char *str) {
+    unsigned int hash = 0;
+    while (*str) {
+        hash = (hash << 5) + hash + (unsigned char)(*str);
+        str++;
+    }
+    return hash;
+}
+
+/**
  * Converts a string to an integer.
  *
  * This function attempts to parse the input string as a signed integer. It

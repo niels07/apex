@@ -77,7 +77,6 @@ void init_symbol_table(SymbolTable *table) {
     table->symbols = apexMem_calloc(table->size, sizeof(Symbol *));
 }
 
-
 /**
  * Adds a new symbol to the symbol table.
  *

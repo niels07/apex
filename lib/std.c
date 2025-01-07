@@ -1,27 +1,15 @@
+
+#include <stdlib.h>
 #include <stdio.h>
-#include "stdlib.h"
-#include "value.h"
+
 #include "vm.h"
-#include "string.h"
+#include "value.h"
 #include "util.h"
 #include "error.h"
+#include "lib.h"
 
-void writestr(ApexVM *vm) {
-    ApexValue value = apexVM_pop(vm);
-    printf("%s", apexVal_tostr(value));
-}
 
-void printstr(ApexVM *vm) {
-    writestr(vm);
-    printf("\n");
-}
-
-void readstr(ApexVM *vm) {
-    ApexString *line = apexUtl_readline(stdin);
-    apexVM_pushval(vm, apexVal_makestr(line));
-}
-
-void valtoint(ApexVM *vm) {
+void std_int(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_BOOL:
@@ -45,7 +33,8 @@ void valtoint(ApexVM *vm) {
         if (apexUtl_stoi(&i, apexVal_str(value)->value)) {
             apexVM_pushint(vm, i);
         } else {
-            apexErr_fatal(vm->ins->srcloc,"cannot convert string \"%s\" to int", apexVal_str(value)->value);
+            exit(EXIT_FAILURE);
+            apexErr_type(vm, "cannot convert string \"%s\" to int", apexVal_str(value)->value);
         }
         break;
     }
@@ -56,13 +45,13 @@ void valtoint(ApexVM *vm) {
     }
 }
 
-static void valtostr(ApexVM *vm) {
+void std_str(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
     char *str = apexVal_tostr(value);
     apexVM_pushstr(vm, str);
 }
 
-void valtoflt(ApexVM *vm) {
+void std_flt(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_INT:
@@ -93,7 +82,7 @@ void valtoflt(ApexVM *vm) {
     }
 }
 
-void valtodbl(ApexVM *vm) {
+void std_dbl(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_INT:
@@ -122,7 +111,7 @@ void valtodbl(ApexVM *vm) {
     }
 }
 
-void valtobool(ApexVM *vm) {
+void std_bool(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_INT:
@@ -146,7 +135,7 @@ void valtobool(ApexVM *vm) {
     }
 }
 
-static void len(ApexVM *vm) {
+static void std_len(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_ARR:
@@ -163,15 +152,11 @@ static void len(ApexVM *vm) {
     }
 }
 
-StdLib apex_stdlib[] = {
-    { "write", writestr },
-    { "print", printstr },
-    { "read", readstr },
-    { "int", valtoint },
-    { "flt", valtoflt },
-    { "dbl", valtodbl },
-    { "str", valtostr },
-    { "bool", valtobool },
-    { "len", len },
-    { NULL, NULL }
-};
+apex_reglib(std, 
+    apex_regfn("int", std_int),
+    apex_regfn("str", std_str),
+    apex_regfn("flt", std_flt),
+    apex_regfn("dbl", std_dbl),
+    apex_regfn("bool", std_bool),
+    apex_regfn("len", std_len)
+);

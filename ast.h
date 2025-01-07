@@ -22,6 +22,7 @@ typedef enum {
     AST_FOR,
     AST_FN_DECL,
     AST_FN_CALL,
+    AST_LIB_CALL,
     AST_PARAMETER_LIST,
     AST_ARGUMENT_LIST,
     AST_ARRAY,

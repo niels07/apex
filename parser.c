@@ -255,6 +255,46 @@ static AST *parse_function_call(Parser *parser) {
 }
 
 /**
+ * Parses a library function call from the input tokens.
+ *
+ * This function assumes that the current token is the start of a library call,
+ * and will parse the library name, function name, and arguments. The library
+ * name is expected to be an identifier followed by a colon. The function name
+ * is expected to be an identifier followed by an opening parenthesis. The
+ * arguments are parsed as a list of expressions. If the syntax is incorrect
+ * at any point, a syntax error is reported.
+ *
+ * @param parser A pointer to the Parser containing the tokens to be parsed.
+ * @return A pointer to an AST node representing the parsed library call, or
+ *         an error node if a syntax error is encountered.
+ */
+static AST *parse_library_call(Parser *parser) {
+    AST *lib_name = CREATE_AST_STR(
+        AST_VAR, NULL, NULL,
+        parser->current_token->str,
+        parser->current_token->srcloc);
+    consume(parser, TOKEN_IDENT);
+    consume(parser, TOKEN_COLON);
+
+    if (parser->current_token->type != TOKEN_IDENT) {
+        apexErr_syntax(parser->lexer, "expected function name after ':'");
+    }
+
+    AST *fn_name = CREATE_AST_STR(
+        AST_VAR, NULL, NULL,
+        parser->current_token->str,
+        parser->current_token->srcloc);
+    consume(parser, TOKEN_IDENT);
+    consume(parser, TOKEN_LPAREN);
+
+    AST *arguments = parse_fn_args(parser);
+
+    return CREATE_AST_AST(
+        AST_LIB_CALL, lib_name, fn_name, arguments,
+        parser->current_token->srcloc);
+}
+
+/**
  * Parses a member access or member function call from the input tokens.
  *
  * This function assumes that the current token is the start of a member access
@@ -323,6 +363,9 @@ static AST *parse_member(Parser *parser, AST *node) {
 static AST *parse_ident(Parser *parser) {
     if (peek_token(parser, 1).type == TOKEN_LPAREN) {
         return parse_function_call(parser);
+    }
+    if (peek_token(parser, 1).type == TOKEN_COLON) {
+        return parse_library_call(parser);
     }
     AST *node = CREATE_AST_STR(
         AST_VAR, NULL, NULL, 

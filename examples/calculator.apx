@@ -3,15 +3,15 @@ include "math.apx";
 cont = true;
 
 while (cont) {
-	write("enter first number: ");
-	a = dbl(read());
-	write("enter second number: ");
-	b = dbl(read());
-	print("1. add");
-	print("2. subtract");
-	print("3. multiply");
-	print("4. divide");
-	input = read();
+	io:write("enter first number: ");
+	a = std:dbl(io:read());
+	io:write("enter second number: ");
+	b = std:dbl(io:read());
+	io:print("1. add");
+	io:print("2. subtract");
+	io:print("3. multiply");
+	io:print("4. divide");
+	input = io:read();
 	result = 0;
 	if (input == "1") {
 		result = add(a, b);
@@ -21,25 +21,25 @@ while (cont) {
 		result = mul(a, b);
 	} elif (input == "4") {
 		if (b == 0) {
-			print("invalid input, division by 0");
+			io:print("invalid input, division by 0");
 			continue;
 		}
 		result = div(a, b);
 	} else {
-		print("invalid input");
+		io:print("invalid input");
 		continue;
 	}
-	print("result: " + str(result));
+	io:print("result: " + std:str(result));
 	while (input != "y" && input != "n") {
-		write("would you like to do another calculation [y/n]");
-		input = read();
+		io:write("would you like to do another calculation [y/n] ");
+		input = io:read();
 		if (input == "y") {
 			continue;
 		} elif (input == "n") {
 			cont = false;
 		} else {
-			print("invalid input");
+			io:print("invalid input");
 		}
 	}
 }
-print("GoodBye!");
+io:print("GoodBye!");

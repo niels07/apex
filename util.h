@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 
+extern unsigned int apexUtl_hash(const char *str);
 extern bool apexUtl_stoi(int *out, const char *str);
 extern bool apexUtl_stof(float *out, const char *str);
 extern bool apexUtl_stod(double *out, const char *str);

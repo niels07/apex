@@ -84,7 +84,7 @@ static ApexString *IF_STR, *ELIF_STR, *ELSE_STR,
     *TRUE_STR, *FALSE_STR,
     *INCLUDE_STR,
     *ARROW_STR,
-    *DOT_STR;
+    *DOT_STR, *COLON_STR;
 
 static int globals_initialized = 0;
 
@@ -140,6 +140,7 @@ static void init_lexer_globals() {
     ARROW_STR = apexStr_new("=>", 2);
     INCLUDE_STR = apexStr_new("include", 7);
     DOT_STR = apexStr_new(".", 1);
+    COLON_STR = apexStr_new(":", 1);
     globals_initialized = 1;
 };
 
@@ -545,6 +546,8 @@ Token *get_next_token(Lexer *lexer) {
         return create_token(lexer, TOKEN_PIPE, PIPE_STR);
     case '.':
         return create_token(lexer, TOKEN_DOT, DOT_STR);
+    case ':':
+        return create_token(lexer, TOKEN_COLON, COLON_STR);
     }
 
     apexErr_syntax(lexer, "Unexpected character: '%c'", c);

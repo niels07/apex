@@ -6,7 +6,7 @@
 #include "mem.h"
 #include "string.h"
 #include "error.h"
-#include "stdlib.h"
+#include "lib.h"
 #include "parser.h"
 
 #define STACK_PUSH(vm, val) ((vm)->stack[(vm)->stack_top++] = (val))
@@ -1313,8 +1313,15 @@ void vm_dispatch(ApexVM *vm) {
             break;
         }
         case OP_CALL_LIB: {
-            int fn_addr = ins->value.intval;
-            apex_stdlib[fn_addr].fn(vm);
+            ApexValue fn_name_val = stack_pop(vm);
+            ApexValue lib_name_val = stack_pop(vm);
+            const char *lib_name = lib_name_val.strval->value;
+            const char *fn_name = fn_name_val.strval->value;
+            ApexLibFn lib_fn = apexLib_get(lib_name, fn_name);
+            if (!lib_fn) {
+                apexErr_runtime(vm, "undefined library function '%s:%s'", lib_name, fn_name);
+            }
+            lib_fn(vm);
             break;
         }
         case OP_FUNCTION_START:

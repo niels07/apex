@@ -22,6 +22,7 @@ static const char *get_ast_node_type_name(ASTNodeType type) {
         case AST_FOR: return "AST_FOR";
         case AST_FN_DECL: return "AST_FN_DECL";
         case AST_FN_CALL: return "AST_FN_CALL";
+        case AST_LIB_CALL: return "AST_LIB_CALL";
         case AST_PARAMETER_LIST: return "AST_PARAMETER_LIST";
         case AST_ARGUMENT_LIST: return "AST_ARGUMENT_LIST";
         case AST_RETURN: return "AST_RETURN";
@@ -58,7 +59,11 @@ void print_ast(AST *node, int indent) {
     print_indent(indent);
     printf("Node Type: %s (%d)", get_ast_node_type_name(node->type), node->type);
     
-    if (node->value.strval != NULL && node->type != AST_FN_DECL && node->type != AST_IF && node->type != AST_FOR) {
+    if (node->value.strval &&
+        node->type != AST_FN_DECL && 
+        node->type != AST_IF && 
+        node->type != AST_FOR &&
+        node->type != AST_LIB_CALL) {
         printf(", Value: \"%s\"", node->value.strval->value);
     }
 
@@ -79,7 +84,7 @@ void print_ast(AST *node, int indent) {
         print_ast(node->right, indent + 1);
     }
 
-    if (node->type == AST_FN_DECL || node->type == AST_IF || node->type == AST_FOR) {
+    if (node->type == AST_FN_DECL || node->type == AST_IF || node->type == AST_FOR || node->type == AST_LIB_CALL) {
         print_indent(indent);
         printf("Value:\n");
         print_ast(node->value.ast_node, indent + 1);

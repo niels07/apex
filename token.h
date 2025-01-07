@@ -53,6 +53,7 @@ typedef enum {
     TOKEN_ARROW,
     TOKEN_INCLUDE,
     TOKEN_DOT,
+    TOKEN_COLON,
     TOKEN_EOF
 } TokenType;
 

@@ -24,6 +24,8 @@
         "*.tcc": "c",
         "stdlib.h": "c",
         "symbol.h": "c",
-        "stdbool.h": "c"
+        "stdbool.h": "c",
+        "cstdlib": "cpp",
+        "vm.h": "c"
     }
 }
