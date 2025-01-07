@@ -18,6 +18,7 @@ static const char *opcode_to_string(OpCode opcode) {
         case OP_PUSH_DBL: return "OP_PUSH_DBL";
         case OP_PUSH_STR: return "OP_PUSH_STR";
         case OP_PUSH_BOOL: return "OP_PUSH_BOOL";
+        case OP_PUSH_NULL: return "OP_PUSH_NULL";
         case OP_CREATE_ARRAY: return "OP_CREATE_ARRAY";
         case OP_SET_ELEMENT: return "OP_SET_ELEMENT";
         case OP_GET_ELEMENT: return "OP_GET_ELEMENT";
@@ -850,6 +851,10 @@ void vm_dispatch(ApexVM *vm) {
         case OP_PUSH_STR:
         case OP_PUSH_BOOL:
             stack_push(vm, ins->value);
+            break;
+
+        case OP_PUSH_NULL:
+            stack_push(vm, apexVal_makenull());
             break;
 
         case OP_POP:

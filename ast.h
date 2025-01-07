@@ -11,6 +11,7 @@ typedef enum {
     AST_DBL,
     AST_STR,    
     AST_BOOL,
+    AST_NULL,
     AST_BINARY_EXPR,
     AST_UNARY_EXPR,
     AST_LOGICAL_EXPR,

@@ -9,6 +9,7 @@ typedef enum {
     TOKEN_INT,
     TOKEN_DBL,
     TOKEN_STR,
+    TOKEN_NULL,
     TOKEN_IF,
     TOKEN_ELIF,
     TOKEN_ELSE,

@@ -15,6 +15,7 @@ typedef enum {
     OP_PUSH_DBL,
     OP_PUSH_STR,
     OP_PUSH_BOOL,   
+    OP_PUSH_NULL,
     OP_CREATE_ARRAY,
     OP_SET_ELEMENT,
     OP_GET_ELEMENT,

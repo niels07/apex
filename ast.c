@@ -11,6 +11,7 @@ static const char *get_ast_node_type_name(ASTNodeType type) {
         case AST_DBL: return "AST_DBL";
         case AST_STR: return "AST_STR";
         case AST_BOOL: return "AST_BOOL";
+        case AST_NULL: return "AST_NULL";
         case AST_BINARY_EXPR: return "AST_BINARY_EXPR";
         case AST_UNARY_EXPR: return "AST_UNARY_EXPR";
         case AST_LOGICAL_EXPR: return "AST_LOGICAL_EXPR";
@@ -66,7 +67,8 @@ void print_ast(AST *node, int indent) {
         node->type != AST_FN_DECL && 
         node->type != AST_IF && 
         node->type != AST_FOR &&
-        node->type != AST_LIB_CALL) {
+        node->type != AST_LIB_CALL &&
+        node->type != AST_SWITCH) {
         printf(", Value: \"%s\"", node->value.strval->value);
     }
 
@@ -87,7 +89,11 @@ void print_ast(AST *node, int indent) {
         print_ast(node->right, indent + 1);
     }
 
-    if (node->type == AST_FN_DECL || node->type == AST_IF || node->type == AST_FOR || node->type == AST_LIB_CALL) {
+    if (node->type == AST_FN_DECL || 
+        node->type == AST_IF || 
+        node->type == AST_FOR || 
+        node->type == AST_LIB_CALL ||
+        node->type == AST_SWITCH) {
         print_indent(indent);
         printf("Value:\n");
         print_ast(node->value.ast_node, indent + 1);

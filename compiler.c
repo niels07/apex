@@ -14,35 +14,6 @@
 #include "parser.h"
 #include "util.h"
 
-static const char *get_ast_node_type_name(ASTNodeType type) {
-    switch (type) {
-        case AST_ERROR: return "AST_ERROR";
-        case AST_INT: return "AST_INT";
-        case AST_DBL: return "AST_DBL";
-        case AST_BOOL: return "AST_BOOL";
-        case AST_STR: return "AST_STR";
-        case AST_BINARY_EXPR: return "AST_BINARY_EXPR";
-        case AST_UNARY_EXPR: return "AST_UNARY_EXPR";
-        case AST_LOGICAL_EXPR: return "AST_LOGICAL_EXPR";
-        case AST_VAR: return "AST_VARIABLE";
-        case AST_ASSIGNMENT: return "AST_ASSIGNMENT";
-        case AST_BLOCK: return "AST_BLOCK";
-        case AST_IF: return "AST_IF";
-        case AST_WHILE: return "AST_WHILE";
-        case AST_FOR: return "AST_FOR";
-        case AST_FN_DECL: return "AST_FN_DECL";
-        case AST_FN_CALL: return "AST_FN_CALL";
-        case AST_PARAMETER_LIST: return "AST_PARAMETER_LIST";
-        case AST_ARGUMENT_LIST: return "AST_ARGUMENT_LIST";
-        case AST_RETURN: return "AST_RETURN";
-        case AST_STATEMENT: return "AST_STATEMENT";
-        case AST_CONTINUE: return "AST_CONTINUE";
-        case AST_BREAK: return "AST_BREAK";
-        case AST_INCLUDE: return "AST_INCLUDE";
-        default: return "UNKNOWN_AST_NODE_TYPE";
-    }
-}
-
 #define EMIT_OP_INT(vm, opcode, value) emit_instruction(vm, opcode, apexVal_makeint(value))
 #define EMIT_OP_DBL(vm, opcode, value) emit_instruction(vm, opcode, apexVal_makedbl(value))
 #define EMIT_OP_STR(vm, opcode, value) emit_instruction(vm, opcode, apexVal_makestr(value))
@@ -180,10 +151,7 @@ static const char **compile_parameter_list(AST *param_list, int *param_n) {
             AST *parameter = param_list->left;
             const char *param_name = parameter->value.strval->value;
             if (parameter->type != AST_VAR) {
-                apexErr_fatal(
-                    parameter->srcloc,
-                    "expected parameter to be a variable, got: %s", 
-                    get_ast_node_type_name(parameter->type));
+                apexErr_fatal(parameter->srcloc, "expected parameter to be a variable");
             }
             if (pcount >= psize) {
                 psize *= 2;
@@ -199,11 +167,7 @@ static const char **compile_parameter_list(AST *param_list, int *param_n) {
                 break;
             }
         } else {
-            apexErr_fatal(
-                param_list->srcloc,
-                "Invalid AST node in parameter list, expected "
-                "AST_PARAMETER_LIST or AST_VARIABLE, got %s", 
-                get_ast_node_type_name(param_list->type));
+            apexErr_fatal(param_list->srcloc,"Invalid AST node in parameter list");
         }
     }
     *param_n = pcount;
@@ -629,7 +593,6 @@ static void compile_object_literal(ApexVM *vm, AST *node) {
  * @param node The AST node representing the expression to be compiled.
  */
 static void compile_expression(ApexVM *vm, AST *node, bool result_used) {
-    printf("compile_expression type: %d\n", node->type);
     UPDATE_SRCLOC(vm, node);
     switch (node->type) {
     case AST_INT:
@@ -643,6 +606,10 @@ static void compile_expression(ApexVM *vm, AST *node, bool result_used) {
 
     case AST_STR:
         EMIT_OP_STR(vm, OP_PUSH_STR, node->value.strval);
+        break;
+
+    case AST_NULL:
+        EMIT_OP(vm, OP_PUSH_NULL);
         break;
 
     case AST_BOOL:
@@ -824,7 +791,9 @@ static void compile_include(ApexVM *vm, AST *node) {
 static void compile_switch(ApexVM *vm, AST *node) {
     UPDATE_SRCLOC(vm, node);
     AST *left = node->left;
-    int end_jump = -1;
+    
+    int end_jumps[256];
+    int end_jumps_n = 0;
 
     for (AST *case_node = node->right; case_node; case_node = case_node->right) {
         if (case_node->type == AST_CASE) {
@@ -841,7 +810,9 @@ static void compile_switch(ApexVM *vm, AST *node) {
             
             // Compile the case body
             compile_statement(vm, case_node->right);
-            end_jump = vm->chunk->ins_n - 1;
+            EMIT_OP(vm, OP_JUMP);
+            end_jumps[end_jumps_n++] = vm->chunk->ins_n - 1;
+            
 
             // Patch the jump to this case
             vm->chunk->ins[skip_jump].value.intval = vm->chunk->ins_n - skip_jump - 1;
@@ -852,8 +823,9 @@ static void compile_switch(ApexVM *vm, AST *node) {
     if (node->value.ast_node) {
         compile_statement(vm, node->value.ast_node);
     }
-    if (end_jump != -1) {
-        vm->chunk->ins[end_jump].value.intval = vm->chunk->ins_n - end_jump - 1;
+    
+    for (int i = 0; i < end_jumps_n; i++) {
+        vm->chunk->ins[end_jumps[i]].value.intval = vm->chunk->ins_n - end_jumps[i] - 1;
     }
     
 }

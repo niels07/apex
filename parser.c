@@ -498,6 +498,14 @@ static AST *parse_primary(Parser *parser) {
         consume(parser, TOKEN_STR);
         return node;
 
+    case TOKEN_NULL:
+        node = CREATE_AST_STR(
+            AST_NULL, NULL, NULL, 
+            parser->current_token->str, 
+            parser->current_token->srcloc);
+        consume(parser, TOKEN_NULL);
+        return node;
+
     case TOKEN_TRUE: 
     case TOKEN_FALSE:
         node = CREATE_AST_STR(

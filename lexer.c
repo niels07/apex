@@ -18,6 +18,7 @@ static TokenStr tk2str[] = {
     {"int", 3}, 
     {"double", 6}, 
     {"string", 6}, 
+    {"null", 4},
     {"if", 2}, 
     {"elif", 4}, 
     {"else", 4},
@@ -89,7 +90,8 @@ static ApexString *IF_STR, *ELIF_STR, *ELSE_STR,
     *INCLUDE_STR,
     *ARROW_STR,
     *DOT_STR, *COLON_STR,
-    *SWITCH_STR, *CASE_STR, *DEFAULT_STR;
+    *SWITCH_STR, *CASE_STR, *DEFAULT_STR,
+    *NULL_STR;
 
 static int globals_initialized = 0;
 
@@ -149,6 +151,7 @@ static void init_lexer_globals() {
     SWITCH_STR = apexStr_new("switch", 6);
     CASE_STR = apexStr_new("case", 4);
     DEFAULT_STR = apexStr_new("default", 7);
+    NULL_STR = apexStr_new("null", 4);
     globals_initialized = 1;
 };
 
@@ -383,6 +386,8 @@ static Token *scan_ident(Lexer *lexer) {
         return create_token(lexer, TOKEN_CASE, ident);
     } else if (ident == DEFAULT_STR) {
         return create_token(lexer, TOKEN_DEFAULT, ident);
+    } else if (ident == NULL_STR) {
+        return create_token(lexer, TOKEN_NULL, ident);
     }
     
     return create_token(lexer, TOKEN_IDENT, ident);

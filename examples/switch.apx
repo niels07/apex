@@ -11,4 +11,15 @@ case 5:
     io:print("'5' expected");
 case 7:
     io:print("unexpected '7'");
+default:
+    io:print("unexpected 'default'");
+}
+
+switch (value) {
+case "one":
+    io:print("unexpected 'one'");
+case 3.5:
+    io:print("unexpected '3.5'");
+default:
+    io:print("'default' expected");
 }
