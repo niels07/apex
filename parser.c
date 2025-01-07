@@ -1014,6 +1014,73 @@ static AST *parse_if_statement(Parser *parser) {
 }
 
 /**
+ * Parses a switch statement from the input tokens.
+ *
+ * This function assumes that the current token is the 'switch' keyword, and
+ * will parse the condition and then the cases enclosed in curly braces. Each
+ * case is a combination of a value and a statement, and is parsed as a single
+ * unit.
+ *
+ * The function handles default cases by creating a special default node in the
+ * AST. If a default case is present, it will be the last case in the list.
+ *
+ * @param parser A pointer to the Parser containing the tokens to be parsed.
+ * @return A pointer to an AST node representing the switch statement, or an error
+ *         node if a syntax error is encountered.
+ */
+static AST *parse_switch_statement(Parser *parser) {
+    SrcLoc srcloc = parser->current_token->srcloc;
+
+    consume(parser, TOKEN_SWITCH);
+
+    // Parse the switch value (e.g., 'value' in 'switch (value)')
+    consume(parser, TOKEN_LPAREN);
+
+    AST *switch_value = parse_expression(parser);
+    consume(parser, TOKEN_RPAREN);
+
+    // Parse the switch body
+    consume(parser, TOKEN_LBRACE);
+
+    AST *cases = NULL;
+    AST *default_case = NULL;
+
+    while (parser->current_token->type != TOKEN_RBRACE) {
+        if (parser->current_token->type == TOKEN_CASE) {
+            consume(parser, TOKEN_CASE);
+
+            // Parse the case value
+            AST *case_value = parse_expression(parser);
+            consume(parser, TOKEN_COLON);
+
+            // Parse the case body
+            AST *case_body = parse_statement(parser);
+
+            AST *case_node = CREATE_AST_ZERO(AST_CASE, case_value, case_body, srcloc);
+            cases = append_ast(cases, case_node);
+
+        } else if (parser->current_token->type == TOKEN_DEFAULT) {
+            consume(parser, TOKEN_DEFAULT);
+            consume(parser, TOKEN_COLON);
+
+            if (default_case) {
+                apexErr_syntax(parser->lexer, "multiple default cases are not allowed");
+            }
+
+            // Parse the default case body
+            default_case = parse_statement(parser);
+        } else {
+            apexErr_syntax(parser->lexer, "unexpected token in switch");
+        }
+    }
+
+    consume(parser, TOKEN_RBRACE);
+
+    // Create the switch AST node
+    return CREATE_AST_AST(AST_SWITCH, switch_value, cases, default_case, srcloc);
+}
+
+/**
  * Parses a while statement from the input tokens.
  *
  * This function assumes that the current token is the start of a while
@@ -1215,6 +1282,102 @@ static AST *parse_function_declaration(Parser *parser) {
 }
 
 /**
+ * Parses an identifier statement from the input tokens.
+ *
+ * This function assumes that the current token is an identifier and will
+ * parse the statement as either a function call, member access, array
+ * access, or assignment expression. The function handles both cases where
+ * the statement is followed by a semicolon or ends the block.
+ *
+ * @param parser A pointer to the Parser containing the tokens to be parsed.
+ * @return A pointer to an AST node representing the parsed statement, or an
+ *         error node if a syntax error is encountered.
+ */
+static AST *parse_ident_statement(Parser *parser) {
+    Token next_token = peek_token(parser, 1);
+    AST *stmt;
+    if (next_token.type == TOKEN_EQUAL || 
+        next_token.type == TOKEN_PLUS_EQUAL || 
+        next_token.type == TOKEN_MINUS_EQUAL || 
+        next_token.type == TOKEN_STAR_EQUAL || 
+        next_token.type == TOKEN_SLASH_EQUAL) {            
+        stmt = parse_assignment(parser);
+        consume(parser, TOKEN_SEMICOLON);
+        return stmt;
+    } else if (next_token.type == TOKEN_DOT) {
+        for (int i = 2; next_token.type != TOKEN_EOF; i++) {
+            next_token = peek_token(parser, i);                
+
+            if (next_token.type == TOKEN_EQUAL || 
+                next_token.type == TOKEN_PLUS_EQUAL || 
+                next_token.type == TOKEN_MINUS_EQUAL || 
+                next_token.type == TOKEN_STAR_EQUAL || 
+                next_token.type == TOKEN_SLASH_EQUAL) {
+                stmt = parse_assignment(parser);
+                consume(parser, TOKEN_SEMICOLON);
+                break;
+            }
+            if (next_token.type == TOKEN_SEMICOLON) {
+                stmt = parse_expression(parser);
+                consume(parser, TOKEN_SEMICOLON);
+                return stmt;
+            }
+        }
+        apexErr_syntax(
+            parser->lexer,
+            "unexpected '%s', expecting %s, %s, %s, %s, %s or %s",
+            get_token_str(next_token.type),
+            get_token_str(TOKEN_EQUAL),
+            get_token_str(TOKEN_PLUS_EQUAL),
+            get_token_str(TOKEN_MINUS_EQUAL),
+            get_token_str(TOKEN_STAR_EQUAL),
+            get_token_str(TOKEN_SLASH_EQUAL),
+            get_token_str(TOKEN_SEMICOLON));
+
+    } else if (next_token.type == TOKEN_LBRACKET) {
+        int i;
+        for (i = 2; next_token.type != TOKEN_RBRACKET; i++) {
+            next_token = peek_token(parser, i);
+            if (next_token.type == TOKEN_EOF) {
+                apexErr_syntax(
+                    parser->lexer, 
+                    "unexpected %s, expecting %s",
+                    get_token_str(TOKEN_EOF),
+                    get_token_str(TOKEN_RBRACKET));
+            }
+        }
+        next_token = peek_token(parser, i);
+        if (next_token.type == TOKEN_PLUS_PLUS || 
+            next_token.type == TOKEN_MINUS_MINUS) {
+            stmt = parse_expression(parser);
+        } else {
+            stmt = parse_assignment(parser);
+        }
+        consume(parser, TOKEN_SEMICOLON);
+        return stmt;
+    } else if (next_token.type == TOKEN_LPAREN) {
+        stmt = parse_function_call(parser);
+        consume(parser, TOKEN_SEMICOLON);
+        return stmt;
+    } else {
+        stmt = parse_expression(parser);
+        consume(parser, TOKEN_SEMICOLON);
+        return stmt;
+    }
+    apexErr_syntax(
+        parser->lexer,
+        "unexpected '%s', expecting %s, %s, %s, %s, %s, %s or %s",
+        get_token_str(next_token.type),
+        get_token_str(TOKEN_DOT),
+        get_token_str(TOKEN_LBRACKET),
+        get_token_str(TOKEN_EQUAL),
+        get_token_str(TOKEN_PLUS_EQUAL),
+        get_token_str(TOKEN_MINUS_EQUAL),
+        get_token_str(TOKEN_STAR_EQUAL),
+        get_token_str(TOKEN_SLASH_EQUAL));
+}
+
+/**
  * Parses a single statement from the input tokens.
  *
  * This function handles parsing of single statements, including
@@ -1228,13 +1391,17 @@ static AST *parse_function_declaration(Parser *parser) {
  */
 static AST *parse_statement(Parser *parser) {
     AST *stmt = NULL;
-    Token next_token;
+    
     SrcLoc srcloc = parser->current_token->srcloc;
 
     switch (parser->current_token->type) {
     case TOKEN_IF:
         stmt = parse_if_statement(parser);
         break;    
+
+    case TOKEN_SWITCH:
+        stmt = parse_switch_statement(parser);
+        break;
 
     case TOKEN_WHILE:
         stmt = parse_while_statement(parser);
@@ -1253,59 +1420,8 @@ static AST *parse_statement(Parser *parser) {
         break;
 
     case TOKEN_IDENT:
-        next_token = peek_token(parser, 1);
-
-        if (next_token.type == TOKEN_EQUAL || 
-            next_token.type == TOKEN_PLUS_EQUAL || 
-            next_token.type == TOKEN_MINUS_EQUAL || 
-            next_token.type == TOKEN_STAR_EQUAL || 
-            next_token.type == TOKEN_SLASH_EQUAL) {            
-            stmt = parse_assignment(parser);
-            consume(parser, TOKEN_SEMICOLON);
-            break;
-        } else if (next_token.type == TOKEN_DOT) {
-            for (int i = 2; next_token.type != TOKEN_EOF; i++) {
-                next_token = peek_token(parser, i);                
-
-                if (next_token.type == TOKEN_EQUAL || 
-                    next_token.type == TOKEN_PLUS_EQUAL || 
-                    next_token.type == TOKEN_MINUS_EQUAL || 
-                    next_token.type == TOKEN_STAR_EQUAL || 
-                    next_token.type == TOKEN_SLASH_EQUAL) {
-                    stmt = parse_assignment(parser);
-                    consume(parser, TOKEN_SEMICOLON);
-                    break;
-                }
-                if (next_token.type == TOKEN_SEMICOLON) {
-                    stmt = parse_expression(parser);
-                    consume(parser, TOKEN_SEMICOLON);
-                    break;
-                }
-            }
-            break;
-        } else if (next_token.type == TOKEN_LBRACKET) {
-            int i;
-            for (i = 0; next_token.type != TOKEN_RBRACKET; i++) {
-                next_token = peek_token(parser, i);
-            }
-            next_token = peek_token(parser, i);
-            if (next_token.type == TOKEN_PLUS_PLUS || 
-                next_token.type == TOKEN_MINUS_MINUS) {
-                stmt = parse_expression(parser);
-            } else {
-                stmt = parse_assignment(parser);
-            }
-            consume(parser, TOKEN_SEMICOLON);
-            break;
-        } else if (next_token.type == TOKEN_LPAREN) {
-            stmt = parse_function_call(parser);
-            consume(parser, TOKEN_SEMICOLON);
-            break;
-        } else {
-            stmt = parse_expression(parser);
-            consume(parser, TOKEN_SEMICOLON);
-            break;
-        }
+        stmt = parse_ident_statement(parser);
+        break;
 
     case TOKEN_CONTINUE:
         consume(parser, TOKEN_CONTINUE);

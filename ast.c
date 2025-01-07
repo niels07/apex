@@ -38,6 +38,9 @@ static const char *get_ast_node_type_name(ASTNodeType type) {
         case AST_CTOR: return "AST_CTOR";
         case AST_NEW: return "AST_NEW";
         case AST_OBJECT: return "AST_OBJECT";
+        case AST_SWITCH: return "AST_SWITCH";
+        case AST_CASE: return "AST_CASE";
+        case AST_DEFAULT: return "AST_DEFAULT";
     }
     return "UNKNOWN_AST_NODE_TYPE";
 }

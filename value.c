@@ -902,3 +902,52 @@ int apexVal_arrlen(ApexValue value) {
     Array *arr = value.arrval;
     return arr->n;
 }
+
+/**
+ * Converts an ApexValue to a boolean representation.
+ *
+ * This function takes an ApexValue and returns a boolean representation
+ * based on its type and value. The conversion is performed as follows:
+ * - Integers are considered true if non-zero.
+ * - Floats and doubles are considered true if non-zero.
+ * - Booleans retain their value.
+ * - Strings are considered true if not null.
+ * - Functions, arrays, types, and objects are always considered true.
+ * - Null values are considered false.
+ *
+ * @param value The ApexValue to convert to a boolean.
+ * @return A boolean representation of the ApexValue.
+ */
+bool apexVal_tobool(ApexValue value) {
+    switch (value.type) {
+    case APEX_VAL_INT:
+        value = apexVal_makebool(value.intval != 0);
+
+    case APEX_VAL_FLT:
+        value = apexVal_makebool(value.fltval != 0);
+        break;
+
+    case APEX_VAL_DBL:
+        value = apexVal_makebool(value.dblval != 0);
+        break;
+
+    case APEX_VAL_BOOL:
+        break;
+
+    case APEX_VAL_STR:
+        value = apexVal_makebool(value.strval != NULL);
+        break;
+
+    case APEX_VAL_FN:
+    case APEX_VAL_ARR:
+    case APEX_VAL_TYPE:
+    case APEX_VAL_OBJ:
+        value = apexVal_makebool(true);
+        break;
+
+    case APEX_VAL_NULL:
+        value = apexVal_makebool(false);
+        break;
+    }
+    return value.boolval;
+}

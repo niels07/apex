@@ -90,6 +90,7 @@ extern ApexValue apexVal_makearr(Array *arr);
 extern ApexValue apexVal_maketype(ApexObject *obj);
 extern ApexValue apexVal_makeobj(ApexObject *obj);
 extern ApexValue apexVal_makenull(void);
+extern bool apexVal_tobool(ApexValue value);
 extern int apexVal_arrlen(ApexValue value);
 extern void apexVal_retain(ApexValue value);
 extern void apexVal_release(ApexValue value);

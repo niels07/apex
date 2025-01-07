@@ -272,7 +272,6 @@ static void compile_array_access(ApexVM *vm, AST *node, bool is_assignment) {
     }
 }
 
-
 /**
  * Recursively compiles an argument list to bytecode.
  *
@@ -749,7 +748,6 @@ static void compile_expression(ApexVM *vm, AST *node, bool result_used) {
     }
 }
 
-
 /**
  * Compiles an AST node representing an include statement to bytecode.
  *
@@ -821,6 +819,43 @@ static void compile_include(ApexVM *vm, AST *node) {
     free_ast(program);
     free_parser(&parser);
     free(source);
+}
+
+static void compile_switch(ApexVM *vm, AST *node) {
+    UPDATE_SRCLOC(vm, node);
+    AST *left = node->left;
+    int end_jump = -1;
+
+    for (AST *case_node = node->right; case_node; case_node = case_node->right) {
+        if (case_node->type == AST_CASE) {
+            compile_expression(vm, left, true);
+            // Compile the case value (e.g., 'one', 1.5, true)
+            compile_expression(vm, case_node->left, true);
+
+            // Emit a comparison (switch_value == case_value)
+            EMIT_OP(vm, OP_EQ);
+
+            // Emit a jump to skip this case body
+            EMIT_OP(vm, OP_JUMP_IF_FALSE);
+            int skip_jump = vm->chunk->ins_n - 1;
+            
+            // Compile the case body
+            compile_statement(vm, case_node->right);
+            end_jump = vm->chunk->ins_n - 1;
+
+            // Patch the jump to this case
+            vm->chunk->ins[skip_jump].value.intval = vm->chunk->ins_n - skip_jump - 1;
+        }
+    }
+
+    // Compile the default case if present
+    if (node->value.ast_node) {
+        compile_statement(vm, node->value.ast_node);
+    }
+    if (end_jump != -1) {
+        vm->chunk->ins[end_jump].value.intval = vm->chunk->ins_n - end_jump - 1;
+    }
+    
 }
 
 /**
@@ -914,6 +949,10 @@ static void compile_statement(ApexVM *vm, AST *node) {
         vm->chunk->ins[true_jmp_i].value.intval = vm->chunk->ins_n - true_jmp_i - 1;
         break;
     }
+    case AST_SWITCH:
+        compile_switch(vm, node);
+        break;
+
     case AST_WHILE: 
         compile_loop(vm, node->left, node->right, NULL);
         break;
@@ -961,7 +1000,7 @@ static void compile_statement(ApexVM *vm, AST *node) {
         if (node->left) {
             compile_statement(vm, node->left);
         }
-        if (node->right) {
+        if (node->right && node->right->type != AST_CASE) {
             compile_statement(vm, node->right);
         }
         break;

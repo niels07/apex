@@ -37,7 +37,10 @@ typedef enum {
     AST_MEMBER_FN,
     AST_CTOR,
     AST_NEW,
-    AST_OBJECT
+    AST_OBJECT,
+    AST_SWITCH,
+    AST_CASE,
+    AST_DEFAULT
 } ASTNodeType;
 
 typedef union {

@@ -18,6 +18,18 @@ typedef struct ApexLib {
 
 #define apex_regfn(name, fn) { name, fn }
 
+/**
+ * Registers a library with the Apex runtime.
+ *
+ * This macro defines a `void apex_register_<libname>(void)` function that
+ * registers all the functions in the library with the Apex runtime. The
+ * library name and the functions to be registered are specified as
+ * arguments to the macro.
+ *
+ * @param libname The name of the library.
+ * @param ... A list of `apex_regfn` entries, each specifying the name of
+ *            a function and the associated function pointer.
+ */
 #define apex_reglib(libname, ...)                   \
     void apex_register_##libname(void) {            \
         static ApexLibFnEntry entries[] = {         \

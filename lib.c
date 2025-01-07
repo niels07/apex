@@ -7,6 +7,7 @@
 #include <dirent.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 #include "lib.h"
 #include "util.h"
 #include "mem.h"
@@ -47,7 +48,7 @@ void apexLib_add(const char *libname, const char *fnname, ApexLibFn fn) {
     snprintf(key, sizeof(key), "%s:%s", libname, fnname);
     unsigned int index = apexUtl_hash(key) % LIB_TABLE_SIZE;
     LibEntry *entry = apexMem_alloc(sizeof(LibEntry));
-    printf("adding %s at %d\n", key, index);
+
     entry->key = apexStr_new(key, strlen(key))->value;
     entry->fn = fn;
     entry->next = lib_table[index];
@@ -175,5 +176,6 @@ void apexLib_init(void) {
     for (int i = 0; paths[i] != NULL; i++) {
         load_path_libs(paths[i]);
     }
+    errno = 0;
 }
 

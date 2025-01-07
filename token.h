@@ -54,6 +54,9 @@ typedef enum {
     TOKEN_INCLUDE,
     TOKEN_DOT,
     TOKEN_COLON,
+    TOKEN_SWITCH,
+    TOKEN_CASE,
+    TOKEN_DEFAULT,
     TOKEN_EOF
 } TokenType;
 

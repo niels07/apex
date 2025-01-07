@@ -1,0 +1,14 @@
+
+value = 5;
+switch (value) {
+case "one":
+    io:print("unexpected 'one'");
+case 3.5:
+    io:print("unexpected '3.5'");
+case true:
+    io:print("unexpected 'true'");
+case 5:
+    io:print("'5' expected");
+case 7:
+    io:print("unexpected '7'");
+}

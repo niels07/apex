@@ -62,6 +62,10 @@ static TokenStr tk2str[] = {
     {"=>", 2}, 
     {"include", 7},
     {".", 1},
+    {":", 1},
+    {"switch", 6},
+    {"case", 4},
+    {"default", 7},
     {"eof", 3}
 };
 
@@ -84,7 +88,8 @@ static ApexString *IF_STR, *ELIF_STR, *ELSE_STR,
     *TRUE_STR, *FALSE_STR,
     *INCLUDE_STR,
     *ARROW_STR,
-    *DOT_STR, *COLON_STR;
+    *DOT_STR, *COLON_STR,
+    *SWITCH_STR, *CASE_STR, *DEFAULT_STR;
 
 static int globals_initialized = 0;
 
@@ -141,6 +146,9 @@ static void init_lexer_globals() {
     INCLUDE_STR = apexStr_new("include", 7);
     DOT_STR = apexStr_new(".", 1);
     COLON_STR = apexStr_new(":", 1);
+    SWITCH_STR = apexStr_new("switch", 6);
+    CASE_STR = apexStr_new("case", 4);
+    DEFAULT_STR = apexStr_new("default", 7);
     globals_initialized = 1;
 };
 
@@ -369,7 +377,14 @@ static Token *scan_ident(Lexer *lexer) {
         return create_token(lexer, TOKEN_CONTINUE, ident);
     } else if (ident == INCLUDE_STR) {
         return create_token(lexer, TOKEN_INCLUDE, ident);
+    } else if (ident == SWITCH_STR) {
+        return create_token(lexer, TOKEN_SWITCH, ident);
+    } else if (ident == CASE_STR) {
+        return create_token(lexer, TOKEN_CASE, ident);
+    } else if (ident == DEFAULT_STR) {
+        return create_token(lexer, TOKEN_DEFAULT, ident);
     }
+    
     return create_token(lexer, TOKEN_IDENT, ident);
 }
 

@@ -927,42 +927,9 @@ void vm_dispatch(ApexVM *vm) {
         case OP_JUMP:
             vm->ip += ins->value.intval;
             break;
-
         case OP_JUMP_IF_FALSE: {
             ApexValue condition = stack_pop(vm);
-            switch (condition.type) {
-            case APEX_VAL_INT:
-                condition = apexVal_makebool(condition.intval != 0);
-                break;
-
-            case APEX_VAL_FLT:
-                condition = apexVal_makebool(condition.fltval != 0);
-                break;
-
-            case APEX_VAL_DBL:
-                condition = apexVal_makebool(condition.dblval != 0);
-                break;
-
-            case APEX_VAL_BOOL:
-                break;
-
-            case APEX_VAL_STR:
-                condition = apexVal_makebool(condition.strval != NULL);
-                break;
-
-            case APEX_VAL_FN:
-            case APEX_VAL_ARR:
-            case APEX_VAL_TYPE:
-            case APEX_VAL_OBJ:
-                condition = apexVal_makebool(true);
-                break;
-
-            case APEX_VAL_NULL:
-                condition = apexVal_makebool(false);
-                break;
-            }
-
-            if (!condition.boolval) {
+            if (!apexVal_tobool(condition)) {
                 vm->ip += ins->value.intval;
             }
             break;
