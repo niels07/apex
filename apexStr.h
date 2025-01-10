@@ -9,7 +9,7 @@ typedef struct ApexString {
     struct ApexString *next;
 } ApexString;
 
-#include "value.h"
+#include "apexVal.h"
 
 #define apexStr_val(str, n) apexStr_new(str, n)->value
 

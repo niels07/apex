@@ -25,6 +25,8 @@ static TokenStr tk2str[] = {
     {"fn", 2},
     {"for", 3}, 
     {"while", 5},
+    {"foreach", 7},
+    {"in", 2},
     {"return", 6},
     {"+", 1}, 
     {"-", 1}, 
@@ -73,7 +75,8 @@ static TokenStr tk2str[] = {
 /* Global strings used by the lexer. */
 static ApexString *IF_STR, *ELIF_STR, *ELSE_STR,
     *FN_STR, 
-    *FOR_STR, *WHILE_STR, *RETURN_STR, 
+    *FOR_STR, *WHILE_STR, *FOREACH_STR, *IN_STR,
+    *RETURN_STR, 
     *PLUS_STR, *MINUS_STR, *STAR_STR, *SLASH_STR, 
     *PLUS_PLUS_STR, *MINUS_MINUS_STR, 
     *EQUAL_STR, *PLUS_EQUAL_STR, *MINUS_EQUAL_STR, *STAR_EQUAL_STR, *SLASH_EQUAL_STR, 
@@ -109,6 +112,8 @@ static void init_lexer_globals() {
     FN_STR = apexStr_new("fn", 2);
     FOR_STR = apexStr_new("for", 3);
     WHILE_STR = apexStr_new("while", 5);
+    FOREACH_STR = apexStr_new("foreach", 7);
+    IN_STR = apexStr_new("in", 2);
     RETURN_STR = apexStr_new("return", 6);
     PLUS_STR = apexStr_new("+", 1);
     MINUS_STR = apexStr_new("-", 1);
@@ -390,6 +395,10 @@ static Token *scan_ident(Lexer *lexer) {
         return create_token(lexer, TOKEN_FOR, ident);
     } else if (ident == WHILE_STR) {
         return create_token(lexer, TOKEN_WHILE, ident);
+    } else if (ident == FOREACH_STR) {
+        return create_token(lexer, TOKEN_FOREACH, ident);
+    } else if (ident == IN_STR) {
+        return create_token(lexer, TOKEN_IN, ident);
     } else if (ident == TRUE_STR)  {
         return create_token(lexer, TOKEN_TRUE, ident);
     } else if (ident == FALSE_STR) {

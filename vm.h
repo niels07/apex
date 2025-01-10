@@ -6,7 +6,7 @@
 #define CALL_STACK_MAX 128
 
 #include <stdbool.h>
-#include "value.h"
+#include "apexVal.h"
 #include "symbol.h"
 #include "srcloc.h"
 
@@ -34,8 +34,11 @@ typedef enum {
     OP_POST_DEC_GLOBAL,
     OP_RETURN,
     OP_CALL,
+    OP_ITER_START,
+    OP_ITER_NEXT,
     OP_JUMP,
     OP_JUMP_IF_FALSE,
+    OP_JUMP_IF_DONE,
     OP_GET_GLOBAL,
     OP_SET_GLOBAL,
     OP_GET_LOCAL,

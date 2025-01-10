@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include "compiler.h"
 #include "vm.h"
-#include "value.h"
+#include "apexVal.h"
 #include "error.h"
 #include "symbol.h"
 #include "mem.h"
@@ -125,12 +125,12 @@ static void compile_variable(ApexVM *vm, AST *node, bool is_assignment) {
  *
  * @param param_list The AST node representing the parameter list to be
  *                   compiled.
- * @param param_n A pointer to an integer which will be set to the number
+ * @param argc A pointer to an integer which will be set to the number
  *                of parameters in the list.
  * @return An array of strings containing the parameter names, or NULL if
  *         the parameter list is empty.
  */
-static const char **compile_parameter_list(AST *param_list, int *param_n) {
+static const char **compile_parameter_list(AST *param_list, int *argc) {
     int pcount = 0;
     int psize = 8;
     const char **params = apexMem_alloc(sizeof(char *) * psize);
@@ -172,7 +172,7 @@ static const char **compile_parameter_list(AST *param_list, int *param_n) {
             return NULL;
         }
     }
-    *param_n = pcount;
+    *argc = pcount;
     return params;
 }
 
@@ -211,7 +211,7 @@ static bool compile_array(ApexVM *vm, AST *node) {
             n++;
         }
         
-        current = current->right;
+        current = current->right->right;
     }
 
     EMIT_OP_INT(vm, OP_CREATE_ARRAY, n);
@@ -307,12 +307,12 @@ static bool compile_function_declaration(ApexVM *vm, AST *node) {
         vm->in_function = true;
         EMIT_OP(vm, OP_FUNCTION_START);
         push_scope(&vm->local_scopes);
-        int param_n = 0;
-        const char **params = compile_parameter_list(node->value.ast_node, &param_n);
+        int argc = 0;
+        const char **params = compile_parameter_list(node->value.ast_node, &argc);
         if (!params) {
             return false;
         }
-        Fn *fn = apexVal_newfn(fnname, params, param_n, vm->chunk->ins_n);
+        Fn *fn = apexVal_newfn(fnname, params, argc, vm->chunk->ins_n);
         ApexValue value;
         if (!apexSym_getglobal(&value, &vm->global_table, objname)) {
             apexErr_syntax(node->parsestate, "object %s not found", objname);
@@ -333,17 +333,17 @@ static bool compile_function_declaration(ApexVM *vm, AST *node) {
         vm->in_function = false;
     } else {
         const char *fnname = node->left->value.strval->value;
-        int param_n = 0;
+        int argc = 0;
         vm->in_function = true;
         EMIT_OP(vm, OP_FUNCTION_START);
         push_scope(&vm->local_scopes);
-        const char **params = compile_parameter_list(node->value.ast_node, &param_n);
+        const char **params = compile_parameter_list(node->value.ast_node, &argc);
         if (!params) {
             return false;
         }
         Fn *fn = apexMem_alloc(sizeof(Fn));
         fn->name = fnname;
-        fn->param_n = param_n;
+        fn->argc = argc;
         fn->params = params;
         fn->addr = vm->chunk->ins_n;
         fn->refcount = 0;
@@ -1009,6 +1009,53 @@ static bool compile_loop(ApexVM *vm, AST *condition, AST *body, AST *increment) 
     return true;
 }
 
+static bool compile_foreach(ApexVM *vm, AST *node) {
+    UPDATE_PARSESTATE(vm, node);
+    AST *key_var = node->left; 
+    AST *value_var = node->right;
+    AST *iterable = node->value.ast_node->left;
+    AST *body = node->value.ast_node->right;
+
+    // Compile the iterable expression
+    if (!compile_expression(vm, iterable, true)) {
+        return false;
+    }
+
+    // Emit OP_ITER_START to initialize iteration
+    EMIT_OP(vm, OP_ITER_START);
+
+    // Record loop start
+    int loop_start = vm->chunk->ins_n;
+
+    // Emit OP_ITER_NEXT to fetch the next item
+    EMIT_OP(vm, OP_ITER_NEXT);
+
+    // Emit OP_JUMP_IF_DONE to check iteration end
+    EMIT_OP(vm, OP_JUMP_IF_DONE);
+    int loop_end = vm->chunk->ins_n - 1; // Address for later patching
+
+    // Compile assignment of key and/or value
+    if (key_var) {
+        EMIT_OP_STR(vm, vm->in_function ? OP_SET_LOCAL : OP_SET_GLOBAL, key_var->value.strval);
+    }
+    if (value_var) {
+        EMIT_OP_STR(vm, vm->in_function ? OP_SET_LOCAL : OP_SET_GLOBAL, value_var->value.strval);
+    }
+
+    // Compile the body of the loop
+    if (!compile_statement(vm, body)) {
+        return false;
+    }
+
+    // Emit a jump back to the loop start
+    EMIT_OP_INT(vm, OP_JUMP, loop_start - vm->chunk->ins_n - 1);
+
+    // Patch the OP_JUMP_IF_DONE to jump to after the loop
+    vm->chunk->ins[loop_end].value.intval = vm->chunk->ins_n - loop_end - 1;
+
+    return true;
+}
+
 /**
  * Compiles an AST node representing a statement to bytecode.
  *
@@ -1071,6 +1118,9 @@ static bool compile_statement(ApexVM *vm, AST *node) {
             vm, node->right, 
             node->value.ast_node->right, 
             node->value.ast_node->left);
+
+    case AST_FOREACH:
+        return compile_foreach(vm, node);
 
     case AST_INCLUDE:
         return compile_include(vm, node);

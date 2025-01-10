@@ -39,10 +39,13 @@ static const char *opcode_to_string(OpCode opcode) {
         case OP_CALL: return "OP_CALL";
         case OP_JUMP: return "OP_JUMP";
         case OP_JUMP_IF_FALSE: return "OP_JUMP_IF_FALSE";
+        case OP_JUMP_IF_DONE: return "OP_JUMP_IF_DONE";
         case OP_SET_GLOBAL: return "OP_SET_GLOBAL";
         case OP_GET_GLOBAL: return "OP_GET_GLOBAL";
         case OP_GET_LOCAL: return "OP_GET_LOCAL";    
         case OP_SET_LOCAL: return "OP_SET_LOCAL";
+        case OP_ITER_START: return "OP_ITER_START";
+        case OP_ITER_NEXT: return "OP_ITER_NEXT";
         case OP_NOT: return "OP_NOT";
         case OP_NEGATE: return "OP_NEGATE";
         case OP_POSITIVE: return "OP_POSITIVE";
@@ -909,15 +912,15 @@ bool vm_dispatch(ApexVM *vm) {
             int ret_addr = vm->ip;
             Fn *fn = fnval.fnval;
             
-            if (argc != fn->param_n) {
-                apexErr_runtime(vm, "expected %d arguments, got %d", fn->param_n, argc);
+            if (argc != fn->argc) {
+                apexErr_runtime(vm, "expected %d arguments, got %d", fn->argc, argc);
                 return false;
             }
 
             push_callframe(vm, fn->name, ins->parsestate);
             push_scope(&vm->local_scopes);            
             
-            for (int i = 0; i < fn->param_n; i++) {
+            for (int i = 0; i < fn->argc; i++) {
                 ApexValue arg = stack_pop(vm);
                 const char *name = fn->params[i];                
                 apexSym_setlocal(&vm->local_scopes, name, arg);
@@ -937,13 +940,59 @@ bool vm_dispatch(ApexVM *vm) {
             }
             break;
         }
+        case OP_JUMP_IF_DONE: {
+            ApexValue condition = stack_pop(vm);
+            if (!condition.boolval) {
+                vm->ip += ins->value.intval;
+            }
+            break;
+        }
+        case OP_ITER_START: {            
+            ApexValue iterable = stack_pop(vm);
+            if (iterable.type == APEX_VAL_ARR) {
+                stack_push(vm, apexVal_makeint(0)); // Push initial index
+                stack_push(vm, iterable);          // Push iterable itself
+            } else {
+                apexErr_runtime(vm, "foreach requires an array");
+                return false;
+            }
+            break;
+        }
+        case OP_ITER_NEXT: {
+            ApexValue iterable = stack_pop(vm);
+            ApexValue index = stack_pop(vm);
+
+            if (iterable.type != APEX_VAL_ARR) {
+                apexErr_runtime(vm, "invalid iterable type in foreach");
+                return false;
+            }
+
+            // Check if iteration is complete
+            if (index.intval >= iterable.arrval->iter_count) {
+                stack_push(vm, apexVal_makebool(false)); // Signal iteration end
+            } else {
+                // Push current value and advance index
+                ArrayEntry *entry = iterable.arrval->iter[index.intval];
+                
+                stack_push(vm, apexVal_makeint(index.intval + 1)); // Next index
+                stack_push(vm, iterable);                
+                stack_push(vm, entry->value);
+                stack_push(vm, entry->key);
+                stack_push(vm, apexVal_makebool(true)); // Signal iteration continues
+            }
+            break;
+        }
+
         case OP_CREATE_ARRAY: {
             Array *array = apexVal_newarray();
-            for (int i = ins->value.intval; i; i--) {
-                ApexValue value = stack_pop(vm);
-                ApexValue key = stack_pop(vm);               
+            int i = vm->stack_top - ins->value.intval * 2;
+            while (i < vm->stack_top - 1) {                
+                ApexValue key = vm->stack[i];
+                ApexValue value = vm->stack[i + 1];                            
                 apexVal_arrayset(array, key, value);
+                i += 2;
             }
+            vm->stack_top -= ins->value.intval;
             stack_push(vm, apexVal_makearr(array));
             break;
         }
@@ -998,13 +1047,13 @@ bool vm_dispatch(ApexVM *vm) {
                 int ret_addr = vm->ip;
                 Fn *fn = newFnVal.fnval;
                 int argc = ins->value.intval;
-                if (argc != fn->param_n) {
-                    apexErr_runtime(vm, "expected %d arguments, got %d", fn->param_n, argc);
+                if (argc != fn->argc) {
+                    apexErr_runtime(vm, "expected %d arguments, got %d", fn->argc, argc);
                     return false;
                 }
                 push_callframe(vm, fn->name, ins->parsestate);
                 push_scope(&vm->local_scopes);
-                for (int i = 0; i < fn->param_n; i++) {
+                for (int i = 0; i < fn->argc; i++) {
                     ApexValue arg = stack_pop(vm);
                     const char *name = fn->params[i];                
                     apexSym_setlocal(&vm->local_scopes, name, arg);
@@ -1082,15 +1131,15 @@ bool vm_dispatch(ApexVM *vm) {
             int ret_addr = vm->ip;
             stack_pop(vm);
 
-            if (argc != fn->param_n) {
-                apexErr_runtime(vm, "expected %d arguments, got %d", fn->param_n, argc);
+            if (argc != fn->argc) {
+                apexErr_runtime(vm, "expected %d arguments, got %d", fn->argc, argc);
                 return false;
             }
 
             push_callframe(vm, fn->name, ins->parsestate);
             push_scope(&vm->local_scopes);            
             
-            for (int i = 0; i < fn->param_n; i++) {
+            for (int i = 0; i < fn->argc; i++) {
                 ApexValue arg = stack_pop(vm);
                 const char *name = fn->params[i];                
                 apexSym_setlocal(&vm->local_scopes, name, arg);

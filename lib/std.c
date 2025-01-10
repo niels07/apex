@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #include "vm.h"
-#include "value.h"
+#include "apexVal.h"
 #include "util.h"
 #include "error.h"
 #include "lib.h"
@@ -147,7 +147,7 @@ static int std_len(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_ARR:
-        apexVM_pushint(vm, value.arrval->n);
+        apexVM_pushint(vm, value.arrval->entry_count);
         break;
 
     case APEX_VAL_STR:

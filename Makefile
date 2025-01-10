@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -Werror -Wno-implicit-fallthrough -std=c99 -g -rdynamic
 BIN = apex
-OBJ = main.o error.o lexer.o mem.o apexStr.o ast.o parser.o value.o symbol.o vm.o compiler.o util.o lib.o
+OBJ = main.o error.o lexer.o mem.o apexStr.o ast.o parser.o apexVal.o symbol.o vm.o compiler.o util.o lib.o
 LIB_OBJ = lib/libio.so lib/libstd.so
 
 all: $(OBJ) $(LIB_OBJ)
@@ -25,8 +25,8 @@ apexStr.o: apexStr.c apexStr.h
 ast.o: ast.c ast.h
 	$(CC) $(CFLAGS) -c ast.c
 
-value.o: value.c value.h
-	$(CC) $(CFLAGS) -c value.c
+apexVal.o: apexVal.c apexVal.h
+	$(CC) $(CFLAGS) -c apexVal.c
 
 symbol.o: symbol.c symbol.h
 	$(CC) $(CFLAGS) -c symbol.c

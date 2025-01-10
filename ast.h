@@ -21,6 +21,8 @@ typedef enum {
     AST_IF,
     AST_WHILE,
     AST_FOR,
+    AST_FOREACH,
+    AST_FOREACH_IT,
     AST_FN_DECL,
     AST_FN_CALL,
     AST_LIB_CALL,

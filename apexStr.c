@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include "apexStr.h"
 #include "mem.h"
-#include "value.h"
+#include "apexVal.h"
 #include "util.h"
 
 

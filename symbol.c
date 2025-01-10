@@ -5,7 +5,7 @@
 #include "symbol.h"
 #include "mem.h"
 #include "apexStr.h"
-#include "value.h"
+#include "apexVal.h"
 
 /**
  * Computes a hash value for a given string.

@@ -20,6 +20,7 @@ static AST *parse_block(Parser *parser);
 static AST *parse_if_statement(Parser *parser);
 static AST *parse_while_statement(Parser *parser);
 static AST *parse_for_statement(Parser *parser);
+static AST *parse_foreach_statement(Parser *parser);
 static AST *parse_return_statement(Parser *parser);
 static AST *parse_function_declaration(Parser *parser);
 static AST *parse_statement(Parser *parser);
@@ -1264,6 +1265,63 @@ static AST *parse_for_statement(Parser *parser) {
 }
 
 /**
+ * Parses a foreach statement from the input tokens.
+ *
+ * This function assumes that the current token is the start of a foreach
+ * statement, and will parse the key and value variables, the iterable
+ * expression, and the loop body. The key and value variables are parsed as
+ * expressions, and the iterable expression is parsed as an expression.
+ * The loop body is parsed as either a block or a single statement. If a
+ * syntax error is encountered during parsing, the function will recover by
+ * consuming tokens until the end of the loop is reached.
+ *
+ * @param parser A pointer to the Parser containing the tokens to be parsed.
+ * @return A pointer to an AST node representing the parsed foreach statement.
+ */
+static AST *parse_foreach_statement(Parser *parser) {
+    ParseState parsestate = parser->current_token->parsestate;
+
+    // Consume `foreach`
+    CONSUME(parser, TOKEN_FOREACH);
+    CONSUME(parser, TOKEN_LPAREN);
+
+    AST *key_var = NULL;
+    AST *value_var = parse_expression(parser);
+    if (parser->current_token->type == TOKEN_COMMA) {
+        // Dual iterator: `key, value`
+        CONSUME(parser, TOKEN_COMMA);
+        key_var = value_var;
+        value_var = parse_expression(parser);
+        if (!value_var) {
+            return NULL;
+        }
+    }
+
+    CONSUME(parser, TOKEN_IN);
+
+    // Parse iterable expression (e.g., `arr`)
+    AST *iterable = parse_expression(parser);
+    if (!iterable) {
+        return NULL;
+    }
+    CONSUME(parser, TOKEN_RPAREN);
+
+    // Parse the loop body
+    AST *body = (parser->current_token->type == TOKEN_LBRACE)
+        ? parse_block(parser)
+        : parse_statement(parser);
+
+    if (!body) {
+        return NULL;
+    }
+
+    return CREATE_AST_AST(
+        AST_FOREACH, key_var, value_var, CREATE_AST_AST(
+            AST_FOREACH_IT, iterable, body, NULL, parsestate), 
+        parsestate);
+}
+
+/**
  * Parses a return statement from the input tokens.
  *
  * This function assumes that the current token is the start of a return
@@ -1519,6 +1577,10 @@ static AST *parse_statement(Parser *parser) {
 
     case TOKEN_FOR:
         stmt = parse_for_statement(parser);
+        break;
+
+    case TOKEN_FOREACH:
+        stmt = parse_foreach_statement(parser);
         break;
 
     case TOKEN_FN:

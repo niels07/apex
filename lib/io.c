@@ -1,6 +1,8 @@
 #include <string.h>
+#include <stdlib.h>
 #include "vm.h"
-#include "value.h"
+#include "apexVal.h"
+#include "apexStr.h"
 #include "util.h"
 #include "lib.h"
 #include "error.h"

@@ -7,7 +7,7 @@
 #include "error.h"
 #include "parser.h"
 #include "vm.h"
-#include "value.h"
+#include "apexVal.h"
 #include "compiler.h"
 #include "lib.h"
 

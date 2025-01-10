@@ -1,8 +1,10 @@
-x = 5;
-if (x == 1) {
-    io:print(x);
-} elif (x == 2) {
-    io:print(x);
-} else {
-    io:print(x);
+arr = [
+    "one" => 1,
+    "two" => 2,
+    "three" => 3    
+];
+
+foreach (key, value in arr) {
+    io:print("key: " + std:str(key));
+    io:print("value: " + std:str(value));
 }

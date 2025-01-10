@@ -16,6 +16,8 @@ typedef enum {
     TOKEN_FN,
     TOKEN_FOR,
     TOKEN_WHILE,
+    TOKEN_FOREACH,
+    TOKEN_IN,
     TOKEN_RETURN,
     TOKEN_PLUS,
     TOKEN_MINUS,

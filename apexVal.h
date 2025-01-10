@@ -31,7 +31,7 @@ typedef struct {
 typedef struct {
     const char *name;
     const char **params;
-    int param_n;
+    int argc;
     int addr;
     int refcount;
 } Fn;
@@ -59,12 +59,16 @@ typedef struct ArrayEntry {
     ApexValue key;
     ApexValue value;
     struct ArrayEntry *next;
+    int index;
 } ArrayEntry;
 
 struct Array {
     ArrayEntry **entries;
-    int size;
-    int n;
+    ArrayEntry **iter;
+    int entry_size;
+    int entry_count;
+    int iter_size;
+    int iter_count;
     int refcount;
 };
 
@@ -90,7 +94,7 @@ struct ApexObject {
 #define apexVal_fn(v) (v.fnval)
 #define apexVal_type(v) (v.type)
 
-extern Fn *apexVal_newfn(const char *name, const char **params, int param_n, int addr);
+extern Fn *apexVal_newfn(const char *name, const char **params, int argc, int addr);
 extern ApexCfn apexVal_newcfn(char *name, int argc, int (*fn)(ApexVM *));
 extern const char *apexVal_typestr(ApexValue value);
 extern char *apexVal_tostr(ApexValue value);

@@ -32,6 +32,7 @@
         "error.h": "c",
         "srcloc.h": "c",
         "lib.h": "c",
-        "apexstr.h": "c"
+        "apexstr.h": "c",
+        "apexval.h": "c"
     }
 }

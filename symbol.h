@@ -2,7 +2,7 @@
 #define SYMBOL_TABLE_H
 
 #include <stdbool.h>
-#include "value.h"
+#include "apexVal.h"
 
 #define SYMBOL_TABLE_SIZE 1024
 

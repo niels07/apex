@@ -1,6 +1,6 @@
 #include <string.h>
 #include <stdlib.h>
-#include "value.h"
+#include "apexVal.h"
 #include "vm.h"
 #include "mem.h"
 #include "apexStr.h"
@@ -173,7 +173,7 @@ static char *arrtostr(Array *arr) {
     int n = 1; 
     int size = 128;
     
-    if (arr->n == 0) {
+    if (arr->entry_count == 0) {
         snprintf(str, size, "[]");
         return apexStr_save(str, 2)->value;
     }
@@ -181,7 +181,7 @@ static char *arrtostr(Array *arr) {
     str[0] = '[';
     str[1] = '\0';
 
-    for (int i = 0; i < arr->size; i++) {
+    for (int i = 0; i < arr->entry_size; i++) {
         ArrayEntry *entry = arr->entries[i];
         while (entry) {
             char *keystr = apexVal_tostr(entry->key);
@@ -465,14 +465,14 @@ void apexVal_release(ApexValue value) {
  * @param name The name of the new function.
  * @param params A const char ** containing the parameter names of the new
  *               function.
- * @param param_n The number of parameters in the new function.
+ * @param argc The number of parameters in the new function.
  * @param addr The address in the instruction chunk of the new function.
  * @return A pointer to the newly allocated Fn.
  */
-Fn *apexVal_newfn(const char *name, const char **params, int param_n, int addr) {
+Fn *apexVal_newfn(const char *name, const char **params, int argc, int addr) {
     Fn *fn = apexMem_alloc(sizeof(Fn));
     fn->name = name;
-    fn->param_n = param_n;
+    fn->argc = argc;
     fn->params = params;
     fn->addr = addr;
     fn->refcount = 0;
@@ -500,38 +500,6 @@ ApexCfn apexVal_newcfn(char *name, int argc, int (*fn)(ApexVM *)) {
 }
 
 /**
- * Resizes the given table to twice its current size.
- *
- * This macro should be used to resize a table when its load factor exceeds
- * a certain threshold. It allocates a new array of the given size, and
- * rehashes all the entries in the table to their new positions in the new
- * array. Finally, it frees the old array and sets the table's size to the
- * new size.
- *
- * @param table The table to be resized.
- * @param entry_type The type of the entries in the table.
- * @param hash_fn A function that takes an entry as an argument and returns
- *                its hash value.
- */
-#define RESIZE_TABLE(table, entry_type, hash_fn) do { \
-    int new_size = table->size * 2; \
-    entry_type **new_entries = apexMem_calloc(new_size, sizeof(entry_type *)); \
-    for (int i = 0; i < table->size; i++) { \
-        entry_type *entry = table->entries[i]; \
-        while (entry) { \
-            unsigned int index = hash_fn(entry->key) % new_size; \
-            entry_type *next = entry->next; \
-            entry->next = new_entries[index]; \
-            new_entries[index] = entry; \
-            entry = next; \
-        } \
-    } \
-    free(table->entries); \
-    table->entries = new_entries; \
-    table->size = new_size; \
-} while (0)
-
-/**
  * Creates a new array with the given size.
  *
  * This function allocates memory for the array and its entries, and
@@ -543,12 +511,14 @@ ApexCfn apexVal_newcfn(char *name, int argc, int (*fn)(ApexVM *)) {
 Array *apexVal_newarray(void) {
     Array *array = apexMem_alloc(sizeof(Array));
     array->entries = apexMem_calloc(sizeof(ArrayEntry), ARR_INIT_SIZE);
-    array->size = ARR_INIT_SIZE;
-    array->n = 0;
+    array->iter = apexMem_calloc(sizeof(ArrayEntry), ARR_INIT_SIZE);
+    array->entry_size = ARR_INIT_SIZE;
+    array->iter_size = ARR_INIT_SIZE;
+    array->entry_count = 0;
+    array->iter_count = 0;
     array->refcount = 0;
     return array;
 }
-
 
 /**
  * Creates a new object with the given name.
@@ -581,7 +551,7 @@ ApexObject *apexVal_newobject(const char *name) {
  * @param array The array to free.
  */
 void apexVal_freearray(Array *array) {
-    for (int i = 0; i < array->size; i++) {
+    for (int i = 0; i < array->entry_size; i++) {
         ArrayEntry *entry = array->entries[i];
         while (entry) {
             ArrayEntry *next = entry->next;
@@ -592,6 +562,7 @@ void apexVal_freearray(Array *array) {
         }
     }
     free(array->entries);
+    free(array->iter);
     free(array);
 }
 
@@ -629,8 +600,44 @@ void apexVal_freeobject(ApexObject *object) {
  *
  * @param array A pointer to the array to resize.
  */
-static void array_resize(Array *array) {
-    RESIZE_TABLE(array, ArrayEntry, get_array_index);
+static void array_resize_entries(Array *array) {
+    int new_size = array->entry_size * 2;
+    ArrayEntry **new_entries = apexMem_calloc(new_size, sizeof(ApexObjectEntry *));
+    for (int i = 0; i < array->entry_size; i++) {
+        ArrayEntry *entry = array->entries[i];
+        while (entry) {
+            unsigned int index = get_array_index(entry->key) % new_size;
+            ArrayEntry *next = entry->next;
+            entry->next = new_entries[index];
+            new_entries[index] = entry;
+            entry = next;
+        }
+    }
+    free(array->entries);
+    array->entries = new_entries;
+    array->entry_size = new_size;
+}
+
+/**
+ * Resizes the array's iterator to twice its current size.
+ *
+ * This function is called when the number of elements in the array exceeds
+ * the current size of the iterator. It allocates a new array of symbols with
+ * twice the size of the current one, and copies the existing elements to
+ * the new array. Finally, it frees the old array and sets the array's
+ * iterator size to the new size.
+ *
+ * @param array A pointer to the array whose iterator is to be resized.
+ */
+static void array_resize_iter(Array *array) {
+    int new_size = array->iter_size * 2;
+    ArrayEntry **new_iter = apexMem_calloc(new_size, sizeof(ApexObjectEntry *));
+    for (int i = 0; i < array->iter_count; i++) {
+        new_iter[i] = array->iter[i];
+    }
+    free(array->iter);
+    array->iter = new_iter;
+    array->iter_size = new_size;
 }
 
 /**
@@ -645,7 +652,21 @@ static void array_resize(Array *array) {
  * @param object A pointer to the object to resize.
  */
 static void object_resize(ApexObject *object) {
-    RESIZE_TABLE(object, ApexObjectEntry, hash_string);
+    int new_size = object->size * 2;
+    ApexObjectEntry **new_entries = apexMem_calloc(new_size, sizeof(ApexObjectEntry *));
+    for (int i = 0; i < object->size; i++) {
+        ApexObjectEntry *entry = object->entries[i];
+        while (entry) {
+            unsigned int index = hash_string(entry->key) % new_size;
+            ApexObjectEntry *next = entry->next;
+            entry->next = new_entries[index];
+            new_entries[index] = entry;
+            entry = next;
+        }
+    }
+    free(object->entries);
+    object->entries = new_entries;
+    object->size = new_size;
 }
 
 /**
@@ -661,13 +682,14 @@ static void object_resize(ApexObject *object) {
  * @param value The value to be associated with the key.
  */
 void apexVal_arrayset(Array *array, ApexValue key, ApexValue value) {
-    unsigned int index = get_array_index(key) % array->size;
+    unsigned int index = get_array_index(key) % array->entry_size;
     ArrayEntry *entry = array->entries[index];
 
     while (entry) {
         if (value_equals(entry->key, key)) {
             apexVal_release(entry->value);
             apexVal_retain(value);
+            array->iter[entry->index]->value = value;
             entry->value = value;
             return;
         }
@@ -681,10 +703,19 @@ void apexVal_arrayset(Array *array, ApexValue key, ApexValue value) {
     entry->value = value;
     entry->next = array->entries[index];
     array->entries[index] = entry;
-    array->n++;
+    if (entry->key.type == APEX_VAL_INT) {
+         printf("setting iter at %d to (key: %d, value: %d)\n", array->iter_count, entry->key.intval, entry->value.intval);
+    } else {
+        printf("setting iter at %d to (key: %s, value: %d)\n", array->iter_count, entry->key.strval->value, entry->value.intval);
+    }
+    array->iter[array->iter_count++] = entry;
+    array->entry_count++;
 
-    if ((float)array->n / array->size > ARR_LOAD_FACTOR) {
-        array_resize(array);
+    if ((float)array->entry_count / array->entry_size > ARR_LOAD_FACTOR) {
+        array_resize_entries(array);
+    }
+    if ((float)array->iter_count / array->iter_size > ARR_LOAD_FACTOR) {
+        array_resize_iter(array);
     }
 }
 
@@ -770,7 +801,7 @@ ApexObject *apexVal_objectcpy(ApexObject *object) {
  * @return true if the key is found and the value is retrieved, otherwise false.
  */
 bool apexVal_arrayget(ApexValue *value, Array *array, const ApexValue key) {
-    unsigned int index = get_array_index(key) % array->size;
+    unsigned int index = get_array_index(key) % array->entry_size;
     ArrayEntry *entry = array->entries[index];
 
     while (entry) {
@@ -826,7 +857,7 @@ bool apexVal_objectget(ApexValue *value, ApexObject *object, const char *key) {
  * @param key The key identifying the key-value pair to remove.
  */
 void apexVal_arraydel(Array *array, const ApexValue key) {
-    unsigned int index = get_array_index(key) % array->size;
+    unsigned int index = get_array_index(key) % array->entry_size;
     ArrayEntry *prev = NULL;
     ArrayEntry *entry = array->entries[index];
 
@@ -840,7 +871,7 @@ void apexVal_arraydel(Array *array, const ApexValue key) {
             apexVal_release(entry->key);
             apexVal_release(entry->value);
             free(entry);
-            array->n--;
+            array->entry_count--;
             return;
         }
         prev = entry;
@@ -1045,7 +1076,7 @@ ApexValue apexVal_makenull(void) {
  */
 int apexVal_arrlen(ApexValue value) {
     Array *arr = value.arrval;
-    return arr->n;
+    return arr->entry_count;
 }
 
 /**
