@@ -4,7 +4,7 @@
 #include "ast.h"
 #include "lexer.h"
 #include "error.h"
-#include "string.h"
+#include "apexStr.h"
 
 static AST *parse_logical(Parser *parser);
 static AST *parse_expression(Parser *parser);
@@ -23,7 +23,7 @@ static AST *parse_for_statement(Parser *parser);
 static AST *parse_return_statement(Parser *parser);
 static AST *parse_function_declaration(Parser *parser);
 static AST *parse_statement(Parser *parser);
-static void consume(Parser *parser, TokenType type);
+static bool consume(Parser *parser, TokenType type);
 
 /**
  * Initializes a Parser with the provided Lexer.
@@ -38,7 +38,6 @@ void init_parser(Parser *parser, Lexer *lexer) {
     parser->lexer = lexer;
     parser->current_token = get_next_token(lexer);
 }
-
 
 /**
  * Peeks ahead in the token stream by a specified number of tokens.
@@ -65,29 +64,44 @@ static Token peek_token(Parser *parser, int count) {
 }
 
 /**
- * Consumes a token from the lexer and updates the current token.
+ * Consumes the current token if it matches the expected type.
  *
- * This function verifies that the current token matches the provided
- * type. If the types match, the current token is freed and the next
- * token is retrieved from the lexer. If the types do not match, a
- * syntax error is reported and the parser is synchronized if the
- * sync_on_err flag is set.
+ * This function checks if the current token in the parser matches the 
+ * specified token type. If it does, the current token is freed, and the 
+ * next token is fetched from the lexer. If the token types match, the 
+ * function returns true. If the token types do not match and the parser 
+ * is set to allow incomplete input, the function returns false without 
+ * reporting an error. If the token types do not match and incomplete 
+ * input is not allowed, a syntax error is reported and the function 
+ * returns false.
  *
- * @param parser A pointer to the Parser containing the lexer and tokens.
- * @param type The type of token to consume.
- * @param sync_on_err Whether to synchronize the parser on error.
+ * @param parser A pointer to the Parser structure containing the current 
+ *               token and lexer.
+ * @param type The TokenType expected at the current position.
+ * @return True if the current token type matches the expected type, false 
+ *         otherwise.
  */
-static void consume(Parser *parser, TokenType type) {
+static bool consume(Parser *parser, TokenType type) {
     if (parser->current_token->type == type) {
         free_token(parser->current_token);
         parser->current_token = get_next_token(parser->lexer);
-    } else {
-        apexErr_syntax(parser->lexer, 
-            "expected '%s' but found '%s'", 
-            get_token_str(type)->value, 
-            parser->current_token->str->value);
+        return true;
     }
+    if (parser->allow_incomplete) {        
+        return false;
+    }
+    apexErr_syntax(parser->lexer->parsestate, 
+        "expected '%s' but found '%s'", 
+        get_token_str(type)->value, 
+        parser->current_token->str->value);
+    return false;
 }
+
+#define CONSUME(parser, type) do { \
+    if (!consume(parser, type)) {  \
+        return NULL; \
+    } \
+} while (0)
 
 /**
  * Appends the given AST node to the end of the given AST list.
@@ -133,12 +147,12 @@ static AST *parse_equality(Parser *parser) {
            parser->current_token->type == TOKEN_NOT_EQUAL) {
         TokenType operator = parser->current_token->type;
 
-        consume(parser, operator);
+        CONSUME(parser, operator);
         AST *right = parse_comparison(parser);
         left = CREATE_AST_STR(
             AST_BINARY_EXPR, left, right,
             get_token_str(operator), 
-            parser->current_token->srcloc);
+            parser->current_token->parsestate);
     }
 
     return left;
@@ -162,12 +176,12 @@ static AST *parse_logical(Parser *parser) {
            parser->current_token->type == TOKEN_OR) {
         TokenType operator = parser->current_token->type;
 
-        consume(parser, operator);
+        CONSUME(parser, operator);
         AST *right = parse_equality(parser);
         left = CREATE_AST_STR(
             AST_LOGICAL_EXPR, left, right, 
             get_token_str(operator),
-            parser->current_token->srcloc);
+            parser->current_token->parsestate);
         }
     return left;
 }
@@ -206,16 +220,20 @@ static AST *parse_fn_args(Parser *parser) {
 
         arguments = CREATE_AST_ZERO(
             AST_ARGUMENT_LIST, arguments, argument,
-            parser->current_token->srcloc);
+            parser->current_token->parsestate);
         
         if (parser->current_token->type == TOKEN_COMMA) {
-            consume(parser, TOKEN_COMMA);
-        } else if (parser->current_token->type != TOKEN_RPAREN) {
-            apexErr_syntax(parser->lexer, "expected ',' or ')' in argument list.");
-            consume(parser, parser->current_token->type);
+            CONSUME(parser, TOKEN_COMMA);
+        } else if (parser->current_token->type == TOKEN_EOF) {
+            if (!parser->allow_incomplete) {
+                apexErr_syntax(
+                    parser->lexer->parsestate,
+                    "expected ',' or ')' in argument list.");
+            }
+            return NULL;
         }
     }
-    consume(parser, TOKEN_RPAREN);
+    CONSUME(parser, TOKEN_RPAREN);
     return arguments;
 }
 
@@ -236,22 +254,27 @@ static AST *parse_fn_args(Parser *parser) {
  */
 static AST *parse_function_call(Parser *parser) {
     if (parser->current_token->type != TOKEN_IDENT) {
-        apexErr_syntax(parser->lexer, "expected function name before '('.");
+        if (!parser->allow_incomplete) {
+            apexErr_syntax(
+                parser->lexer->parsestate,  
+                "expected function name before '('.");
+        }
+        return NULL;
     }
 
     AST *function_name = CREATE_AST_STR(
         AST_VAR, NULL, NULL, 
         parser->current_token->str,
-        parser->current_token->srcloc);
+        parser->current_token->parsestate);
 
-    consume(parser, TOKEN_IDENT);
-    consume(parser, TOKEN_LPAREN);
+    CONSUME(parser, TOKEN_IDENT);
+    CONSUME(parser, TOKEN_LPAREN);
 
     AST *arguments = parse_fn_args(parser);
 
     return CREATE_AST_ZERO(
         AST_FN_CALL, function_name, arguments,
-        parser->current_token->srcloc);
+        parser->current_token->parsestate);
 }
 
 /**
@@ -272,26 +295,29 @@ static AST *parse_library_call(Parser *parser) {
     AST *lib_name = CREATE_AST_STR(
         AST_VAR, NULL, NULL,
         parser->current_token->str,
-        parser->current_token->srcloc);
-    consume(parser, TOKEN_IDENT);
-    consume(parser, TOKEN_COLON);
+        parser->current_token->parsestate);
+    CONSUME(parser, TOKEN_IDENT);
+    CONSUME(parser, TOKEN_COLON);
 
     if (parser->current_token->type != TOKEN_IDENT) {
-        apexErr_syntax(parser->lexer, "expected function name after ':'");
+        apexErr_syntax(
+            parser->lexer->parsestate, 
+            "expected function name after ':'");
+        return NULL;
     }
 
     AST *fn_name = CREATE_AST_STR(
         AST_VAR, NULL, NULL,
         parser->current_token->str,
-        parser->current_token->srcloc);
-    consume(parser, TOKEN_IDENT);
-    consume(parser, TOKEN_LPAREN);
+        parser->current_token->parsestate);
+    CONSUME(parser, TOKEN_IDENT);
+    CONSUME(parser, TOKEN_LPAREN);
 
     AST *arguments = parse_fn_args(parser);
 
     return CREATE_AST_AST(
         AST_LIB_CALL, lib_name, fn_name, arguments,
-        parser->current_token->srcloc);
+        parser->current_token->parsestate);
 }
 
 /**
@@ -311,40 +337,53 @@ static AST *parse_library_call(Parser *parser) {
  */
 static AST *parse_member(Parser *parser, AST *node) {
     while (parser->current_token->type == TOKEN_DOT) {
-        consume(parser, TOKEN_DOT);
+        CONSUME(parser, TOKEN_DOT);
         if (parser->current_token->type != TOKEN_IDENT) {
-            apexErr_syntax(parser->lexer, "expected member name after '.'");
+            apexErr_syntax(
+                parser->lexer->parsestate, 
+                "expected member name after '.'");
+            return NULL;
         }
-        AST *member = CREATE_AST_STR(
-            AST_VAR, NULL, NULL, 
-            parser->current_token->str, 
-            parser->current_token->srcloc);
-        consume(parser, TOKEN_IDENT);
-
-        node = CREATE_AST_ZERO(
-            AST_MEMBER_ACCESS, node, member, 
-            parser->current_token->srcloc);
+        ApexString *name = parser->current_token->str;
+        
+        CONSUME(parser, TOKEN_IDENT);       
         
         // Check if the member is a function call
         if (parser->current_token->type == TOKEN_LPAREN) {
             // Member function call: e.g., obj.new(...)
-            consume(parser, TOKEN_LPAREN);
+            CONSUME(parser, TOKEN_LPAREN);
             AST *arguments = parse_fn_args(parser);       
 
-            if (member->value.strval == apexStr_new("new", 3)) {
+            if (name == apexStr_new("new", 3)) {
                 if (node->type != AST_VAR && node->type != AST_MEMBER_ACCESS) {
-                    apexErr_syntax(parser->lexer, "'new' can only be used in object contexts");
+                    apexErr_syntax(
+                        parser->lexer->parsestate, 
+                        "'new' can only be used in object contexts");
+                    return NULL;
                 }
                 // Handle obj.new(...) as object creation
                 node = CREATE_AST_ZERO(
-                    AST_NEW, node->left, arguments,
-                    parser->current_token->srcloc);
+                    AST_NEW, node, arguments,
+                    parser->current_token->parsestate);
             } else {
                 // General member function call
+                AST *member = CREATE_AST_STR(
+                    AST_VAR, NULL, NULL, name, 
+                    parser->current_token->parsestate);
+                node = CREATE_AST_ZERO(
+                    AST_MEMBER_ACCESS, node, member, 
+                    parser->current_token->parsestate);
                 node = CREATE_AST_ZERO(
                     AST_FN_CALL, node, arguments, 
-                    parser->current_token->srcloc);
+                    parser->current_token->parsestate);
             }        
+        } else {
+            AST *member = CREATE_AST_STR(
+                AST_VAR, NULL, NULL, name, 
+                parser->current_token->parsestate);
+            node = CREATE_AST_ZERO(
+                AST_MEMBER_ACCESS, node, member, 
+                parser->current_token->parsestate);
         }
     }
     return node;
@@ -370,30 +409,30 @@ static AST *parse_ident(Parser *parser) {
     AST *node = CREATE_AST_STR(
         AST_VAR, NULL, NULL, 
         parser->current_token->str, 
-        parser->current_token->srcloc);
-    consume(parser, TOKEN_IDENT);
+        parser->current_token->parsestate);
+    CONSUME(parser, TOKEN_IDENT);
     while (parser->current_token->type == TOKEN_DOT) {
         node = parse_member(parser, node);
     }
     // Check if the identifier is an array access
     while (parser->current_token->type == TOKEN_LBRACKET) {
-        consume(parser, TOKEN_LBRACKET);
+        CONSUME(parser, TOKEN_LBRACKET);
         AST *index = parse_expression(parser);
-        consume(parser, TOKEN_RBRACKET);
+        CONSUME(parser, TOKEN_RBRACKET);
 
         node = CREATE_AST_ZERO(
             AST_ARRAY_ACCESS, node, index, 
-            parser->current_token->srcloc);
+            parser->current_token->parsestate);
     }
     // Check for unary expression (++, --)
     if (parser->current_token->type == TOKEN_PLUS_PLUS ||
         parser->current_token->type == TOKEN_MINUS_MINUS) {
         TokenType operator = parser->current_token->type;
-        consume(parser, operator);
+        CONSUME(parser, operator);
         node = CREATE_AST_STR(
             AST_UNARY_EXPR, node, NULL, 
             get_token_str(operator), 
-            parser->current_token->srcloc);
+            parser->current_token->parsestate);
     }
 
     return node;
@@ -415,12 +454,12 @@ static AST *parse_ident(Parser *parser) {
 static AST *parse_array(Parser *parser) {
     AST *node = CREATE_AST_ZERO(
         AST_ARRAY, NULL, NULL,
-        parser->current_token->srcloc);      
+        parser->current_token->parsestate);      
 
-    consume(parser, TOKEN_LBRACKET);
+    CONSUME(parser, TOKEN_LBRACKET);
 
     if (parser->current_token->type == TOKEN_RBRACKET) {
-        consume(parser, TOKEN_RBRACKET);
+        CONSUME(parser, TOKEN_RBRACKET);
         return node;
     }
 
@@ -429,11 +468,11 @@ static AST *parse_array(Parser *parser) {
         if (peek_token(parser, 1).type == TOKEN_ARROW) {
             AST *key = parse_expression(parser);
             
-            consume(parser, TOKEN_ARROW);
+            CONSUME(parser, TOKEN_ARROW);
             AST *value = parse_expression(parser);
             AST *key_value_pair = CREATE_AST_ZERO(
                 AST_KEY_VALUE_PAIR, key, value,
-                parser->current_token->srcloc);
+                parser->current_token->parsestate);
 
             node->right = append_ast(node->right, key_value_pair);
         } else { 
@@ -443,14 +482,18 @@ static AST *parse_array(Parser *parser) {
         }
 
         if (parser->current_token->type == TOKEN_COMMA) {
-            consume(parser, TOKEN_COMMA);
+            CONSUME(parser, TOKEN_COMMA);
         } else if (parser->current_token->type != TOKEN_RBRACKET) {
-            apexErr_syntax(parser->lexer, "expected ',' or ']' in array literal");
-            consume(parser, parser->current_token->type);
+            if (!parser->allow_incomplete) {
+                apexErr_syntax(
+                    parser->lexer->parsestate,
+                    "expected ',' or ']' in array literal");
+            }
+            return NULL;
         }
     }
     
-    consume(parser, TOKEN_RBRACKET);
+    CONSUME(parser, TOKEN_RBRACKET);
     return node;
 }
 
@@ -478,32 +521,32 @@ static AST *parse_primary(Parser *parser) {
         node = CREATE_AST_STR(
             AST_INT, NULL, NULL, 
             parser->current_token->str, 
-            parser->current_token->srcloc);
-        consume(parser, TOKEN_INT);
+            parser->current_token->parsestate);
+        CONSUME(parser, TOKEN_INT);
         return node;
     
     case TOKEN_DBL:
         node = CREATE_AST_STR(
             AST_DBL, NULL, NULL, 
             parser->current_token->str, 
-            parser->current_token->srcloc);
-        consume(parser, TOKEN_DBL);
+            parser->current_token->parsestate);
+        CONSUME(parser, TOKEN_DBL);
         return node;
 
     case TOKEN_STR:
         node = CREATE_AST_STR(
             AST_STR, NULL, NULL, 
             parser->current_token->str, 
-            parser->current_token->srcloc);
-        consume(parser, TOKEN_STR);
+            parser->current_token->parsestate);
+        CONSUME(parser, TOKEN_STR);
         return node;
 
     case TOKEN_NULL:
         node = CREATE_AST_STR(
             AST_NULL, NULL, NULL, 
             parser->current_token->str, 
-            parser->current_token->srcloc);
-        consume(parser, TOKEN_NULL);
+            parser->current_token->parsestate);
+        CONSUME(parser, TOKEN_NULL);
         return node;
 
     case TOKEN_TRUE: 
@@ -511,33 +554,35 @@ static AST *parse_primary(Parser *parser) {
         node = CREATE_AST_STR(
             AST_BOOL, NULL, NULL, 
             parser->current_token->str, 
-            parser->current_token->srcloc);
-        consume(parser, parser->current_token->type);
+            parser->current_token->parsestate);
+        CONSUME(parser, parser->current_token->type);
         return node;
 
     case TOKEN_IDENT:
         return parse_ident(parser);
     
     case TOKEN_LPAREN:
-        consume(parser, TOKEN_LPAREN);
+        CONSUME(parser, TOKEN_LPAREN);
         node = parse_expression(parser);
-        consume(parser, TOKEN_RPAREN);
+        CONSUME(parser, TOKEN_RPAREN);
         return node;
 
     case TOKEN_LBRACKET: 
         return parse_array(parser);   
 
     default:
-        apexErr_syntax(parser->lexer, 
-            "unexpected '%s', expecting %s, %s, %s, %s, %s, %s or %s", 
-            parser->current_token->str->value,
-            get_token_str(TOKEN_INT)->value, 
-            get_token_str(TOKEN_DBL)->value, 
-            get_token_str(TOKEN_STR)->value,
-            get_token_str(TOKEN_TRUE)->value, 
-            get_token_str(TOKEN_FALSE)->value, 
-            get_token_str(TOKEN_IDENT)->value, 
-            get_token_str(TOKEN_LPAREN)->value);
+        if (!parser->allow_incomplete) {
+            apexErr_syntax(parser->lexer->parsestate, 
+                "unexpected '%s', expecting %s, %s, %s, %s, %s, %s or %s", 
+                parser->current_token->str->value,
+                get_token_str(TOKEN_INT)->value, 
+                get_token_str(TOKEN_DBL)->value, 
+                get_token_str(TOKEN_STR)->value,
+                get_token_str(TOKEN_TRUE)->value, 
+                get_token_str(TOKEN_FALSE)->value, 
+                get_token_str(TOKEN_IDENT)->value, 
+                get_token_str(TOKEN_LPAREN)->value);
+        }
         return NULL;
     }
 }
@@ -569,12 +614,12 @@ static AST *parse_unary_operator(Parser *parser, AST *child, bool is_postfix) {
         return child;
     }
 
-    consume(parser, parser->current_token->type);
+    CONSUME(parser, parser->current_token->type);
     return CREATE_AST_STR(
         AST_UNARY_EXPR, is_postfix ? child : NULL, 
         is_postfix ? NULL : child, 
         apexStr_new(op_str, 2), 
-        parser->current_token->srcloc);
+        parser->current_token->parsestate);
 }
 
 /**
@@ -597,23 +642,23 @@ static AST *parse_unary(Parser *parser) {
         parser->current_token->type == TOKEN_PLUS ||
         parser->current_token->type == TOKEN_NOT) {
         TokenType operator = parser->current_token->type;
-        consume(parser, operator);
+        CONSUME(parser, operator);
         node = parse_primary(parser);
         return CREATE_AST_STR(
             AST_UNARY_EXPR, NULL, node, 
             get_token_str(operator), 
-            parser->current_token->srcloc);
+            parser->current_token->parsestate);
     }
 
     if (parser->current_token->type == TOKEN_PLUS_PLUS || 
         parser->current_token->type == TOKEN_MINUS_MINUS) {
         TokenType operator = parser->current_token->type;
-        consume(parser, operator);
+        CONSUME(parser, operator);
         node = parse_primary(parser);
         return CREATE_AST_STR(
             AST_UNARY_EXPR, NULL, node, 
             get_token_str(operator), 
-            parser->current_token->srcloc);
+            parser->current_token->parsestate);
     }
     node = parse_primary(parser);
 
@@ -642,12 +687,12 @@ static AST *parse_factor(Parser *parser) {
            parser->current_token->type == TOKEN_SLASH) {
         TokenType operator = parser->current_token->type;
 
-        consume(parser, operator);
+        CONSUME(parser, operator);
         AST *right = parse_unary(parser);
         left = CREATE_AST_STR(
             AST_BINARY_EXPR, left, right, 
             get_token_str(operator),
-            parser->current_token->srcloc);
+            parser->current_token->parsestate);
     }
     return left;
 }
@@ -670,12 +715,12 @@ static AST *parse_bitwise(Parser *parser) {
            parser->current_token->type == TOKEN_PIPE) {
         TokenType operator = parser->current_token->type;
 
-        consume(parser, operator);
+        CONSUME(parser, operator);
         AST *right = parse_factor(parser);
         left = CREATE_AST_STR(
             AST_BINARY_EXPR, left, right, 
             get_token_str(operator),
-            parser->current_token->srcloc);
+            parser->current_token->parsestate);
     }
     return left;
 }
@@ -698,12 +743,12 @@ static AST *parse_term(Parser *parser) {
            parser->current_token->type == TOKEN_MINUS) {
         TokenType operator = parser->current_token->type;
 
-        consume(parser, operator);
+        CONSUME(parser, operator);
         AST *right = parse_factor(parser);
         left = CREATE_AST_STR(
             AST_BINARY_EXPR, left, right,
             get_token_str(operator),
-            parser->current_token->srcloc);
+            parser->current_token->parsestate);
     }
     return left;
 }
@@ -730,12 +775,12 @@ static AST *parse_comparison(Parser *parser) {
            token_type == TOKEN_GREATER_EQUAL) {
         TokenType operator = parser->current_token->type;
 
-        consume(parser, operator);
+        CONSUME(parser, operator);
         AST *right = parse_bitwise(parser);        
         left = CREATE_AST_STR(
             AST_BINARY_EXPR, left, right, 
             get_token_str(token_type),
-            parser->current_token->srcloc);
+            parser->current_token->parsestate);
         token_type = parser->current_token->type;
     }
     return left;
@@ -757,9 +802,9 @@ static AST *parse_comparison(Parser *parser) {
 static AST *parse_object_literal(Parser *parser, ApexString *name) {
     AST *node = CREATE_AST_STR(
         AST_OBJECT, NULL, NULL, name,
-        parser->current_token->srcloc);
+        parser->current_token->parsestate);
 
-    consume(parser, TOKEN_LBRACE);
+    CONSUME(parser, TOKEN_LBRACE);
 
     while (parser->current_token->type != TOKEN_RBRACE) {
         AST *key = NULL;
@@ -769,27 +814,31 @@ static AST *parse_object_literal(Parser *parser, ApexString *name) {
             key = CREATE_AST_STR(
                 AST_STR, NULL, NULL, 
                 parser->current_token->str,
-                parser->current_token->srcloc);
-            consume(parser, TOKEN_IDENT);
+                parser->current_token->parsestate);
+            CONSUME(parser, TOKEN_IDENT);
 
-            consume(parser, TOKEN_EQUAL);
+            CONSUME(parser, TOKEN_EQUAL);
             value = parse_expression(parser);
 
             AST *key_value_pair = CREATE_AST_ZERO(
                 AST_KEY_VALUE_PAIR, key, value, 
-                parser->current_token->srcloc);
+                parser->current_token->parsestate);
             node->right = append_ast(node->right, key_value_pair);
         }
 
         if (parser->current_token->type == TOKEN_COMMA) {
-            consume(parser, TOKEN_COMMA);
+            CONSUME(parser, TOKEN_COMMA);
         } else if (parser->current_token->type != TOKEN_RBRACE) {
-            apexErr_syntax(parser->lexer, "Expected ',' or '}' in object literal");
-            consume(parser, parser->current_token->type);
+            if (!parser->allow_incomplete) {
+                apexErr_syntax(
+                    parser->lexer->parsestate,
+                    "Expected ',' or '}' in object literal");
+            }
+            return NULL;
         }
     }
 
-    consume(parser, TOKEN_RBRACE);
+    CONSUME(parser, TOKEN_RBRACE);
     return node;
 }
 
@@ -806,7 +855,10 @@ static AST *parse_object_literal(Parser *parser, ApexString *name) {
  */
 static AST *parse_assignment(Parser *parser) {
     if (parser->current_token->type != TOKEN_IDENT) {
-        apexErr_syntax(parser->lexer, "invalid assignment target");
+        apexErr_syntax(
+            parser->lexer->parsestate,
+            "invalid assignment target");
+        return NULL;
     }
 
     AST *left = parse_primary(parser);
@@ -819,51 +871,55 @@ static AST *parse_assignment(Parser *parser) {
         TokenType operator = parser->current_token->type;
         ApexString *operator_str = get_token_str(operator);
         
-        consume(parser, operator);  
+        CONSUME(parser, operator);  
         // Check if the assignment is an array or object literal
         if (parser->current_token->type == TOKEN_LBRACKET) {
             AST *array_literal = parse_primary(parser);
             return CREATE_AST_STR(
                 AST_ASSIGNMENT, left, array_literal, 
                 operator_str,
-                parser->current_token->srcloc);
+                parser->current_token->parsestate);
         } else if (parser->current_token->type == TOKEN_LBRACE) {
             AST *object_literal = parse_object_literal(parser, left->value.strval);
             return CREATE_AST_STR(
                 AST_ASSIGNMENT, left, object_literal, 
                 operator_str,
-                parser->current_token->srcloc);
+                parser->current_token->parsestate);
         } else {
             AST *value = parse_expression(parser);
             return CREATE_AST_STR(
                 AST_ASSIGNMENT, left, value,
                 operator_str,
-                parser->current_token->srcloc);
+                parser->current_token->parsestate);
         }
     // Check if the identifier is an array access
     } else if (parser->current_token->type == TOKEN_LBRACKET) {
-        consume(parser, TOKEN_LBRACKET);
+        CONSUME(parser, TOKEN_LBRACKET);
         AST *index = parse_expression(parser);
-        consume(parser, TOKEN_RBRACKET);
+        CONSUME(parser, TOKEN_RBRACKET);
 
         if (parser->current_token->type != TOKEN_EQUAL) {
-            apexErr_syntax(parser->lexer, "expected '=' after array index in assignment");
+            apexErr_syntax(
+                parser->lexer->parsestate,
+                "expected '=' after array index in assignment");
+            return NULL;
         }
-        consume(parser, TOKEN_EQUAL);
+        CONSUME(parser, TOKEN_EQUAL);
 
         AST *value = parse_expression(parser);
         AST *array_access = CREATE_AST_ZERO(
             AST_ARRAY_ACCESS, left, index,
-            parser->current_token->srcloc);
+            parser->current_token->parsestate);
 
         return CREATE_AST_STR(
             AST_ASSIGNMENT, array_access, value, 
             apexStr_new("=", 1),
-            parser->current_token->srcloc);
+            parser->current_token->parsestate);
     }
-    apexErr_syntax(parser->lexer, 
+    apexErr_syntax(parser->lexer->parsestate, 
         "unexpected token '%s' in assignment",
         parser->current_token->str->value);
+    return NULL;
 }
 
 /**
@@ -885,15 +941,27 @@ static AST *parse_assignment(Parser *parser) {
 static AST *parse_block(Parser *parser) {
     AST *first_stmt = NULL;
     AST *last_stmt = NULL;
-    SrcLoc srcloc = parser->current_token->srcloc;
+    ParseState parsestate = parser->current_token->parsestate;
 
-    consume(parser, TOKEN_LBRACE);
+    CONSUME(parser, TOKEN_LBRACE);
+
+    if (parser->current_token->type == TOKEN_EOF) {
+        if (!parser->allow_incomplete) {
+            apexErr_syntax(
+                parser->lexer->parsestate, 
+                "unexpected end of file in block");
+        } 
+        return NULL;
+    }
 
     while (parser->current_token->type != TOKEN_RBRACE && 
            parser->current_token->type != TOKEN_EOF) {
         AST *stmt = parse_statement(parser);
 
         if (!stmt) {
+            if (parser->allow_incomplete) {
+                return NULL;
+            }
             continue;
         }
 
@@ -904,9 +972,10 @@ static AST *parse_block(Parser *parser) {
         }
         last_stmt = stmt;
     }
-
-    consume(parser, TOKEN_RBRACE);
-    return CREATE_AST_ZERO(AST_BLOCK, first_stmt, NULL, srcloc);
+    
+    CONSUME(parser, TOKEN_RBRACE);
+    
+    return CREATE_AST_ZERO(AST_BLOCK, first_stmt, NULL, parsestate);
 }
 
 /**
@@ -922,18 +991,21 @@ static AST *parse_block(Parser *parser) {
  * @return A pointer to an AST node representing the parsed include statement.
  */
 static AST *parse_include(Parser *parser) {
-    consume(parser, TOKEN_INCLUDE);
+    CONSUME(parser, TOKEN_INCLUDE);
 
     if (parser->current_token->type != TOKEN_STR) {
-        apexErr_syntax(parser->lexer, "expected file path after 'include'");
+        apexErr_syntax(
+            parser->lexer->parsestate,
+            "expected file path after 'include'");
+        return NULL;
     }
 
     ApexString *filepath = parser->current_token->str;
-    consume(parser, TOKEN_STR);
+    CONSUME(parser, TOKEN_STR);
 
     return CREATE_AST_STR(
         AST_INCLUDE, NULL, NULL, filepath,
-        parser->current_token->srcloc);
+        parser->current_token->parsestate);
 }
 
 /**
@@ -956,59 +1028,65 @@ static AST *parse_if_statement(Parser *parser) {
     AST *then_branch = NULL;
     AST *else_branch = NULL;
     AST *current_else = NULL;
-    SrcLoc srcloc = parser->current_token->srcloc;
+    ParseState parsestate = parser->current_token->parsestate;
 
-    consume(parser, TOKEN_IF);
-    consume(parser, TOKEN_LPAREN);
+    // Parse the initial `if` condition and its block/statement
+    CONSUME(parser, TOKEN_IF);
+    CONSUME(parser, TOKEN_LPAREN);
     AST *condition = parse_expression(parser);
-    consume(parser, TOKEN_RPAREN);
+    CONSUME(parser, TOKEN_RPAREN);
 
     if (parser->current_token->type == TOKEN_LBRACE) {
         then_branch = parse_block(parser);
     } else {
         then_branch = parse_statement(parser);
     }
-    
+
+    if (parser->allow_incomplete && !then_branch) {
+        return NULL;
+    }
+
+    // Process `elif` blocks, nesting them within the `else_branch`
     while (parser->current_token->type == TOKEN_ELIF) {
         AST *elif_then_branch = NULL;
         AST *elif_node;
 
-        consume(parser, TOKEN_ELIF);
-        consume(parser, TOKEN_LPAREN);
+        CONSUME(parser, TOKEN_ELIF);
+        CONSUME(parser, TOKEN_LPAREN);
         AST *elif_condition = parse_expression(parser);
-        consume(parser, TOKEN_RPAREN);
+        CONSUME(parser, TOKEN_RPAREN);
 
-         if (parser->current_token->type == TOKEN_LBRACE) {
+        if (parser->current_token->type == TOKEN_LBRACE) {
             elif_then_branch = parse_block(parser);
         } else {
             elif_then_branch = parse_statement(parser);
         }
 
-        elif_node = CREATE_AST_ZERO(
-            AST_IF, 
-            elif_condition, 
-            elif_then_branch, 
-            parser->current_token->srcloc);
+        // Create the `elif` AST node and link it as the `else` of the current structure
+        elif_node = CREATE_AST_AST(
+            AST_IF, elif_condition, elif_then_branch, NULL, parser->current_token->parsestate);
 
         if (current_else) {
             current_else->value.ast_node = elif_node;
         } else if (!else_branch) {
             else_branch = elif_node;
-        } else {
-            apexErr_syntax(parser->lexer, "unexpected 'elif' without a preceding if/else");
         }
 
         current_else = elif_node;
     }
 
+    // Process the final `else` block
     if (parser->current_token->type == TOKEN_ELSE) {
         AST *final_else_branch = NULL;
-        consume(parser, TOKEN_ELSE);
+        CONSUME(parser, TOKEN_ELSE);
+
         if (parser->current_token->type == TOKEN_LBRACE) {
             final_else_branch = parse_block(parser);
         } else {
             final_else_branch = parse_statement(parser);
         }
+
+        // Attach the final `else` block
         if (current_else) {
             current_else->value.ast_node = final_else_branch;
         } else if (!else_branch) {
@@ -1016,9 +1094,8 @@ static AST *parse_if_statement(Parser *parser) {
         }
     }
 
-    return CREATE_AST_AST(
-        AST_IF, condition, then_branch,
-        else_branch, srcloc);
+    // Return the complete `if` AST node
+    return CREATE_AST_AST(AST_IF, condition, then_branch, else_branch, parsestate);
 }
 
 /**
@@ -1037,55 +1114,61 @@ static AST *parse_if_statement(Parser *parser) {
  *         node if a syntax error is encountered.
  */
 static AST *parse_switch_statement(Parser *parser) {
-    SrcLoc srcloc = parser->current_token->srcloc;
+    ParseState parsestate = parser->current_token->parsestate;
 
-    consume(parser, TOKEN_SWITCH);
+    CONSUME(parser, TOKEN_SWITCH);
 
     // Parse the switch value (e.g., 'value' in 'switch (value)')
-    consume(parser, TOKEN_LPAREN);
+    CONSUME(parser, TOKEN_LPAREN);
 
     AST *switch_value = parse_expression(parser);
-    consume(parser, TOKEN_RPAREN);
+    CONSUME(parser, TOKEN_RPAREN);
 
     // Parse the switch body
-    consume(parser, TOKEN_LBRACE);
+    CONSUME(parser, TOKEN_LBRACE);
 
     AST *cases = NULL;
     AST *default_case = NULL;
 
     while (parser->current_token->type != TOKEN_RBRACE) {
         if (parser->current_token->type == TOKEN_CASE) {
-            consume(parser, TOKEN_CASE);
+            CONSUME(parser, TOKEN_CASE);
 
             // Parse the case value
             AST *case_value = parse_expression(parser);
-            consume(parser, TOKEN_COLON);
+            CONSUME(parser, TOKEN_COLON);
 
             // Parse the case body
             AST *case_body = parse_statement(parser);
 
-            AST *case_node = CREATE_AST_ZERO(AST_CASE, case_value, case_body, srcloc);
+            AST *case_node = CREATE_AST_ZERO(AST_CASE, case_value, case_body, parsestate);
             cases = append_ast(cases, case_node);
 
         } else if (parser->current_token->type == TOKEN_DEFAULT) {
-            consume(parser, TOKEN_DEFAULT);
-            consume(parser, TOKEN_COLON);
+            CONSUME(parser, TOKEN_DEFAULT);
+            CONSUME(parser, TOKEN_COLON);
 
             if (default_case) {
-                apexErr_syntax(parser->lexer, "multiple default cases are not allowed");
+                apexErr_syntax(
+                    parser->lexer->parsestate, 
+                    "multiple default cases are not allowed");
+                return NULL;
             }
 
             // Parse the default case body
             default_case = parse_statement(parser);
         } else {
-            apexErr_syntax(parser->lexer, "unexpected token in switch");
+            apexErr_syntax(
+                parser->lexer->parsestate,
+                "unexpected token in switch");
+            return NULL;
         }
     }
 
-    consume(parser, TOKEN_RBRACE);
+    CONSUME(parser, TOKEN_RBRACE);
 
     // Create the switch AST node
-    return CREATE_AST_AST(AST_SWITCH, switch_value, cases, default_case, srcloc);
+    return CREATE_AST_AST(AST_SWITCH, switch_value, cases, default_case, parsestate);
 }
 
 /**
@@ -1102,10 +1185,11 @@ static AST *parse_switch_statement(Parser *parser) {
  * @return A pointer to an AST node representing the parsed while statement.
  */
 static AST *parse_while_statement(Parser *parser) {
-    consume(parser, TOKEN_WHILE);
-    consume(parser, TOKEN_LPAREN);
+    CONSUME(parser, TOKEN_WHILE);
+    CONSUME(parser, TOKEN_LPAREN);
+
     AST *condition = parse_expression(parser);
-    consume(parser, TOKEN_RPAREN);
+    CONSUME(parser, TOKEN_RPAREN);
     
     AST *body;
     if (parser->current_token->type == TOKEN_LBRACE) {
@@ -1113,10 +1197,14 @@ static AST *parse_while_statement(Parser *parser) {
     } else {
         body = parse_statement(parser);
     }
+
+    if (!body && parser->allow_incomplete) {
+        return NULL;
+    }
     
     return CREATE_AST_ZERO(
         AST_WHILE, condition, body,
-        parser->current_token->srcloc);
+        parser->current_token->parsestate);
 }
 
 /**
@@ -1134,27 +1222,27 @@ static AST *parse_while_statement(Parser *parser) {
  * @return A pointer to an AST node representing the parsed for statement.
  */
 static AST *parse_for_statement(Parser *parser) {
-    consume(parser, TOKEN_FOR);
-    consume(parser, TOKEN_LPAREN);
+    CONSUME(parser, TOKEN_FOR);
+    CONSUME(parser, TOKEN_LPAREN);
 
     AST *initialization = NULL;
     if (parser->current_token->type != TOKEN_SEMICOLON) {
         initialization = parse_statement(parser);
     } else {    
-        consume(parser, TOKEN_SEMICOLON);
+        CONSUME(parser, TOKEN_SEMICOLON);
     }
     
     AST *condition = NULL;
     if (parser->current_token->type != TOKEN_SEMICOLON) {
         condition = parse_expression(parser);
     }
-    consume(parser, TOKEN_SEMICOLON);
+    CONSUME(parser, TOKEN_SEMICOLON);
     
     AST *increment = NULL;
     if (parser->current_token->type != TOKEN_RPAREN) {
         increment = parse_expression(parser);
     }
-    consume(parser, TOKEN_RPAREN);
+    CONSUME(parser, TOKEN_RPAREN);
 
     AST *body = NULL;
     if (parser->current_token->type == TOKEN_LBRACE) {
@@ -1163,12 +1251,16 @@ static AST *parse_for_statement(Parser *parser) {
         body = parse_statement(parser);
     }
     
+    if (!body && parser->allow_incomplete) {
+        return NULL;
+    }
+
     return CREATE_AST_AST(
         AST_FOR, initialization, condition, 
         CREATE_AST_ZERO(
             AST_BLOCK, increment, body,
-            parser->current_token->srcloc),
-        parser->current_token->srcloc);
+            parser->current_token->parsestate),
+        parser->current_token->parsestate);
 }
 
 /**
@@ -1189,15 +1281,15 @@ static AST *parse_for_statement(Parser *parser) {
 static AST *parse_return_statement(Parser *parser) {
     AST *expression = NULL;
 
-    consume(parser, TOKEN_RETURN);
+    CONSUME(parser, TOKEN_RETURN);
     
     if (parser->current_token->type != TOKEN_SEMICOLON) {
         expression = parse_expression(parser);
     }
-    consume(parser, TOKEN_SEMICOLON);
+    CONSUME(parser, TOKEN_SEMICOLON);
     return CREATE_AST_ZERO(
         AST_RETURN, expression, NULL,
-        parser->current_token->srcloc);
+        parser->current_token->parsestate);
 }
 
 /**
@@ -1219,74 +1311,85 @@ static AST *parse_return_statement(Parser *parser) {
  *         or an error node if a syntax error is encountered.
  */
 static AST *parse_function_declaration(Parser *parser) {
-    SrcLoc srcloc = parser->current_token->srcloc;
+    ParseState parsestate = parser->current_token->parsestate;
 
-    consume(parser, TOKEN_FN);
+    CONSUME(parser, TOKEN_FN);
     
     if (parser->current_token->type != TOKEN_IDENT) {
-        apexErr_syntax(parser->lexer, "expected function name after 'fn'");
+        if (!parser->allow_incomplete) {
+            apexErr_syntax(
+                parser->lexer->parsestate,
+                "expected function name after 'fn'");
+        }
+        return NULL;
     }
 
     AST *name = CREATE_AST_STR(
         AST_VAR, NULL, NULL,
         parser->current_token->str,
-        parser->current_token->srcloc);
+        parser->current_token->parsestate);
 
-    consume(parser, TOKEN_IDENT);    
+    CONSUME(parser, TOKEN_IDENT);    
 
     // Check if this is a member function or 'new'
     if (parser->current_token->type == TOKEN_DOT) {
-        consume(parser, TOKEN_DOT);
+        CONSUME(parser, TOKEN_DOT);
         if (parser->current_token->type != TOKEN_IDENT) {
-            apexErr_syntax(parser->lexer, "expected member function name after '.'");
+            apexErr_syntax(
+                parser->lexer->parsestate,
+                "expected member function name after '.'");
+            return NULL;
         }
         if (parser->current_token->str == apexStr_new("new", 4)) {
-            consume(parser, TOKEN_IDENT);
+            CONSUME(parser, TOKEN_IDENT);
             name = CREATE_AST_STR(
                 AST_CTOR, name, NULL,
                 parser->current_token->str,
-                srcloc);
+                parsestate);
         } else {
             AST *member_name = CREATE_AST_STR(
                 AST_VAR, NULL, NULL,
                 parser->current_token->str,
-                parser->current_token->srcloc);
+                parser->current_token->parsestate);
             name = CREATE_AST_ZERO(
                 AST_MEMBER_FN, name, member_name,
-                srcloc);
-            consume(parser, TOKEN_IDENT);
+                parsestate);
+            CONSUME(parser, TOKEN_IDENT);
         }
     }
 
-    consume(parser, TOKEN_LPAREN);
+    CONSUME(parser, TOKEN_LPAREN);
     
     AST *parameters = NULL;
     while (parser->current_token->type != TOKEN_RPAREN) {
         if (parser->current_token->type != TOKEN_IDENT) {
-            apexErr_syntax(parser->lexer, "expected parameter name");
+            apexErr_syntax(
+                parser->lexer->parsestate,
+                "expected parameter name");
+            return NULL;
         }
 
         AST *param = CREATE_AST_STR(
             AST_VAR, NULL, NULL,
             parser->current_token->str,
-            parser->current_token->srcloc);
+            parser->current_token->parsestate);
 
         parameters = CREATE_AST_ZERO(
             AST_PARAMETER_LIST, param, parameters,
-            parser->current_token->srcloc);
+            parser->current_token->parsestate);
 
-        consume(parser, TOKEN_IDENT);
-        
+        CONSUME(parser, TOKEN_IDENT);  
         if (parser->current_token->type == TOKEN_COMMA) {
-            consume(parser, TOKEN_COMMA);
-        }
+            CONSUME(parser, TOKEN_COMMA); 
+        }    
+               
     }
-    consume(parser, TOKEN_RPAREN);
+    CONSUME(parser, TOKEN_RPAREN);
     
     AST *body = parse_block(parser);
     return CREATE_AST_AST(
         AST_FN_DECL, name, body, 
-        parameters, srcloc);
+        parameters, parsestate);
 }
 
 /**
@@ -1310,7 +1413,7 @@ static AST *parse_ident_statement(Parser *parser) {
         next_token.type == TOKEN_STAR_EQUAL || 
         next_token.type == TOKEN_SLASH_EQUAL) {            
         stmt = parse_assignment(parser);
-        consume(parser, TOKEN_SEMICOLON);
+        CONSUME(parser, TOKEN_SEMICOLON);
         return stmt;
     } else if (next_token.type == TOKEN_DOT) {
         for (int i = 2; next_token.type != TOKEN_EOF; i++) {
@@ -1322,25 +1425,26 @@ static AST *parse_ident_statement(Parser *parser) {
                 next_token.type == TOKEN_STAR_EQUAL || 
                 next_token.type == TOKEN_SLASH_EQUAL) {
                 stmt = parse_assignment(parser);
-                consume(parser, TOKEN_SEMICOLON);
-                break;
+                CONSUME(parser, TOKEN_SEMICOLON);
+                return stmt;
             }
             if (next_token.type == TOKEN_SEMICOLON) {
                 stmt = parse_expression(parser);
-                consume(parser, TOKEN_SEMICOLON);
+                CONSUME(parser, TOKEN_SEMICOLON);
                 return stmt;
             }
         }
         apexErr_syntax(
-            parser->lexer,
+            parser->lexer->parsestate,
             "unexpected '%s', expecting %s, %s, %s, %s, %s or %s",
-            get_token_str(next_token.type),
-            get_token_str(TOKEN_EQUAL),
-            get_token_str(TOKEN_PLUS_EQUAL),
-            get_token_str(TOKEN_MINUS_EQUAL),
-            get_token_str(TOKEN_STAR_EQUAL),
-            get_token_str(TOKEN_SLASH_EQUAL),
-            get_token_str(TOKEN_SEMICOLON));
+            get_token_str(next_token.type)->value,
+            get_token_str(TOKEN_EQUAL)->value,
+            get_token_str(TOKEN_PLUS_EQUAL)->value,
+            get_token_str(TOKEN_MINUS_EQUAL)->value,
+            get_token_str(TOKEN_STAR_EQUAL)->value,
+            get_token_str(TOKEN_SLASH_EQUAL)->value,
+            get_token_str(TOKEN_SEMICOLON)->value);
+        return NULL;
 
     } else if (next_token.type == TOKEN_LBRACKET) {
         int i;
@@ -1348,10 +1452,11 @@ static AST *parse_ident_statement(Parser *parser) {
             next_token = peek_token(parser, i);
             if (next_token.type == TOKEN_EOF) {
                 apexErr_syntax(
-                    parser->lexer, 
+                    parser->lexer->parsestate, 
                     "unexpected %s, expecting %s",
-                    get_token_str(TOKEN_EOF),
-                    get_token_str(TOKEN_RBRACKET));
+                    get_token_str(TOKEN_EOF)->value,
+                    get_token_str(TOKEN_RBRACKET)->value);
+                return NULL;
             }
         }
         next_token = peek_token(parser, i);
@@ -1361,28 +1466,26 @@ static AST *parse_ident_statement(Parser *parser) {
         } else {
             stmt = parse_assignment(parser);
         }
-        consume(parser, TOKEN_SEMICOLON);
+        CONSUME(parser, TOKEN_SEMICOLON);
         return stmt;
     } else if (next_token.type == TOKEN_LPAREN) {
         stmt = parse_function_call(parser);
-        consume(parser, TOKEN_SEMICOLON);
+        CONSUME(parser, TOKEN_SEMICOLON);
         return stmt;
     } else {
         stmt = parse_expression(parser);
-        consume(parser, TOKEN_SEMICOLON);
+        if (parser->current_token->type != TOKEN_SEMICOLON) {
+            apexErr_syntax(
+                parser->lexer->parsestate, 
+                "unexpected '%s' expecting '%s'", 
+                get_token_str(parser->current_token->type)->value, 
+                get_token_str(TOKEN_SEMICOLON)->value);
+            return NULL;
+        }       
+        CONSUME(parser, TOKEN_SEMICOLON); 
         return stmt;
     }
-    apexErr_syntax(
-        parser->lexer,
-        "unexpected '%s', expecting %s, %s, %s, %s, %s, %s or %s",
-        get_token_str(next_token.type),
-        get_token_str(TOKEN_DOT),
-        get_token_str(TOKEN_LBRACKET),
-        get_token_str(TOKEN_EQUAL),
-        get_token_str(TOKEN_PLUS_EQUAL),
-        get_token_str(TOKEN_MINUS_EQUAL),
-        get_token_str(TOKEN_STAR_EQUAL),
-        get_token_str(TOKEN_SLASH_EQUAL));
+    return NULL;
 }
 
 /**
@@ -1398,9 +1501,8 @@ static AST *parse_ident_statement(Parser *parser) {
  *         if a syntax error is encountered.
  */
 static AST *parse_statement(Parser *parser) {
-    AST *stmt = NULL;
-    
-    SrcLoc srcloc = parser->current_token->srcloc;
+    AST *stmt = NULL;    
+    ParseState parsestate = parser->current_token->parsestate;
 
     switch (parser->current_token->type) {
     case TOKEN_IF:
@@ -1432,38 +1534,38 @@ static AST *parse_statement(Parser *parser) {
         break;
 
     case TOKEN_CONTINUE:
-        consume(parser, TOKEN_CONTINUE);
+        CONSUME(parser, TOKEN_CONTINUE);
         stmt = CREATE_AST_ZERO(
             AST_CONTINUE, NULL, NULL,
-            parser->current_token->srcloc);
-        consume(parser, TOKEN_SEMICOLON);
+            parser->current_token->parsestate);
+        CONSUME(parser, TOKEN_SEMICOLON);
         break;
 
     case TOKEN_BREAK:
-        consume(parser, TOKEN_BREAK);
+        CONSUME(parser, TOKEN_BREAK);
         stmt = CREATE_AST_ZERO(
             AST_BREAK, NULL, NULL, 
-            parser->current_token->srcloc);
-        consume(parser, TOKEN_SEMICOLON);
+            parser->current_token->parsestate);
+        CONSUME(parser, TOKEN_SEMICOLON);
         break;
 
     case TOKEN_INCLUDE:
         stmt = parse_include(parser);
-        consume(parser, TOKEN_SEMICOLON);
+        CONSUME(parser, TOKEN_SEMICOLON);
         break;
         
     default:
         stmt = parse_expression(parser);
-        consume(parser, TOKEN_SEMICOLON);
+        CONSUME(parser, TOKEN_SEMICOLON);
         break;
     }
+
 
     if (stmt && stmt->type != AST_STATEMENT) { 
         stmt = CREATE_AST_ZERO(
             AST_STATEMENT, stmt, NULL,
-            srcloc);
+            parsestate);
     }
-
     return stmt;
 }
 
@@ -1483,12 +1585,17 @@ static AST *parse_statement(Parser *parser) {
 AST *parse_program(Parser *parser) {
     AST *program = NULL;
     AST *last_stmt = NULL;
-
     while (parser->current_token->type != TOKEN_EOF) {
         AST *stmt = parse_statement(parser);
-
         if (!stmt) {
+            if (parser->allow_incomplete) {
+                return NULL;
+            }
             continue;
+        }
+
+        if (stmt->type == AST_ERROR) {
+            return stmt;
         }
 
         if (!program) {

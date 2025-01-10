@@ -8,12 +8,19 @@ fn Person.new(name, gender, age) {
 }
 
 fn Person.talk() {
-    print("Hello, my name is " + this.data.name + " and I'm a " + this.data.gender + ".");
+    io:print("Hello, my name is " + this.data.name + " and I'm a " + this.data.gender + ".");
 }
 
 person = Person.new("Joey", "male", 20);
 person.talk();
 
+x = Person.new("a", "b", 5);
+x.data.name = "test";
+
 person.data.name = "Lisa";
 person.data.gender = "female";
+x.data.name = "test";
 person.talk();
+
+
+x.talk();

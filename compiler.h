@@ -4,6 +4,6 @@
 #include "ast.h"
 #include "vm.h"
 
-void compile(ApexVM *vm, AST *program);
+extern bool compile(ApexVM *vm, AST *program);
 
 #endif

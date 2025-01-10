@@ -1,6 +1,8 @@
-x = null;
-if (!x) {
-    io:print("x is not null");
+x = 5;
+if (x == 1) {
+    io:print(x);
+} elif (x == 2) {
+    io:print(x);
 } else {
-    io:print("x is null");
+    io:print(x);
 }

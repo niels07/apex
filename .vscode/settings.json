@@ -26,6 +26,12 @@
         "symbol.h": "c",
         "stdbool.h": "c",
         "cstdlib": "cpp",
-        "vm.h": "c"
+        "vm.h": "c",
+        "token.h": "c",
+        "apxstr.h": "c",
+        "error.h": "c",
+        "srcloc.h": "c",
+        "lib.h": "c",
+        "apexstr.h": "c"
     }
 }

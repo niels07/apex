@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 #include "srcloc.h"
-#include "string.h"
+#include "apexStr.h"
 
 typedef enum {
     AST_ERROR,
@@ -54,7 +54,7 @@ typedef struct AST {
     struct AST *left;
     struct AST *right;
     ASTValue value;
-    SrcLoc srcloc;
+    ParseState parsestate;
     bool val_is_ast;
 } AST;
 
@@ -63,7 +63,8 @@ typedef struct AST {
 #define CREATE_AST_ZERO(type, left, right, srcloc) create_ast_node(type, left, right, ast_value_zero(), false, srcloc)
 
 extern void print_ast(AST *node, int indent);
-extern AST *create_ast_node(ASTNodeType type, AST *left, AST *right, ASTValue value, bool val_is_ast, SrcLoc srcloc);
+extern AST *create_ast_node(ASTNodeType type, AST *left, AST *right, ASTValue value, bool val_is_ast, ParseState parsestate);
+extern AST *create_error_ast(void);
 extern ASTValue ast_value_zero(void);
 extern ASTValue ast_value_str(ApexString *str);
 extern ASTValue ast_value_ast(AST *ast);

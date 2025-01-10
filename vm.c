@@ -4,7 +4,7 @@
 #include "vm.h"
 #include "symbol.h"
 #include "mem.h"
-#include "string.h"
+#include "apexStr.h"
 #include "error.h"
 #include "lib.h"
 #include "parser.h"
@@ -130,12 +130,28 @@ void init_vm(ApexVM *vm) {
     vm->chunk->ins_n = 0;
     vm->loop_start = -1;
     vm->loop_end = -1;
-    vm->srcloc.lineno = 0;
-    vm->srcloc.filename = NULL;
+    vm->parsestate.lineno = 0;
+    vm->parsestate.filename = NULL;
     vm->call_stack_top = 0;
     vm->obj_context = apexVal_makenull();
     init_symbol_table(&vm->global_table);
     init_scope_stack(&vm->local_scopes);
+}
+
+/**
+ * Resets the virtual machine's instruction chunk.
+ *
+ * This function frees the current instruction memory and reallocates it
+ * with an initial size of 8 instructions. It also resets the instruction
+ * count to zero, effectively clearing any previously loaded instructions.
+ *
+ * @param vm A pointer to the virtual machine structure to reset.
+ */
+void apexVM_reset(ApexVM *vm) {
+    free(vm->chunk->ins);
+    vm->chunk->ins = apexMem_alloc(sizeof(Ins) * 8);
+    vm->chunk->ins_size = 8;
+    vm->chunk->ins_n = 0;
 }
 
 /**
@@ -162,14 +178,14 @@ void free_vm(ApexVM *vm) {
  * being pushed onto the call stack.
  *
  * @param fn_name The name of the function being called.
- * @param srcloc The source location of the call site.
+ * @param parsestate The source location of the call site.
  * @param obj_context The object context of the call.
  * @return A call frame structure with the given information.
  */
-static CallFrame create_callframe(const char *fn_name, SrcLoc srcloc) {
+static CallFrame create_callframe(const char *fn_name, ParseState parsestate) {
     CallFrame callframe;
     callframe.fn_name = fn_name;
-    callframe.srcloc = srcloc;
+    callframe.parsestate = parsestate;
     return callframe;
 }
 
@@ -184,14 +200,14 @@ static CallFrame create_callframe(const char *fn_name, SrcLoc srcloc) {
  *
  * @param vm A pointer to the virtual machine structure.
  * @param fn_name The name of the function for the new call frame.
- * @param srcloc The source location for the new call frame.
+ * @param parsestate The source location for the new call frame.
  * @param obj_context The object context for the new call frame.
  */
-static void push_callframe(ApexVM *vm, const char *fn_name, SrcLoc srcloc) {
+static void push_callframe(ApexVM *vm, const char *fn_name, ParseState parsestate) {
     if (vm->call_stack_top >= CALL_STACK_MAX) {
-        apexErr_fatal(srcloc, "Call stack overflow!");
+        apexErr_fatal(parsestate, "Call stack overflow!");
     }
-    vm->call_stack[vm->call_stack_top++] = create_callframe(fn_name, srcloc);
+    vm->call_stack[vm->call_stack_top++] = create_callframe(fn_name, parsestate);
 }
 
 /**
@@ -204,12 +220,12 @@ static void push_callframe(ApexVM *vm, const char *fn_name, SrcLoc srcloc) {
  *
  * @param vm A pointer to the virtual machine instance whose call stack the
  *           callframe will be popped from.
- * @param srcloc The source location for the error message if the call stack is
+ * @param parsestate The source location for the error message if the call stack is
  *               underflow.
  */
-static CallFrame pop_callframe(ApexVM *vm, SrcLoc srcloc) {
+static CallFrame pop_callframe(ApexVM *vm, ParseState parsestate) {
     if (vm->call_stack_top == 0) {
-        apexErr_fatal(srcloc, "call stack underflow!");
+        apexErr_fatal(parsestate, "call stack underflow!");
     }
     return vm->call_stack[--vm->call_stack_top];
 }
@@ -244,7 +260,7 @@ static Ins *next_ins(ApexVM *vm) {
  */
 static void stack_push(ApexVM *vm, ApexValue value) {
     if (vm->stack_top >= STACK_MAX) {
-        apexErr_runtime(vm, "Stack overflow\n");
+        apexErr_fatal(vm->parsestate, "stack overflow\n");
     }
     vm->stack[vm->stack_top++] = value;
 }
@@ -265,10 +281,14 @@ static void stack_push(ApexVM *vm, ApexValue value) {
 static ApexValue stack_pop(ApexVM *vm) {
     ApexValue value;
     if (vm->stack_top == 0) {
-        apexErr_runtime(vm, "stack underflow");
+        apexErr_fatal(vm->parsestate, "stack underflow");
     }
     value = vm->stack[--vm->stack_top];
     return value;
+}
+
+static ApexValue stack_top(ApexVM *vm) {
+    return vm->stack[vm->stack_top - 1];
 }
 
 /**
@@ -288,7 +308,7 @@ static ApexValue stack_pop(ApexVM *vm) {
  */
 ApexValue apexVM_peek(ApexVM *vm, int offset) {
     if (vm->stack_top - 1 - offset < 0) {
-        apexErr_runtime(vm, "stack underflow: invalid offset");
+        apexErr_fatal(vm->parsestate, "stack underflow: invalid offset");
     }
     return vm->stack[vm->stack_top - 1 - offset];
 }
@@ -365,33 +385,6 @@ void apexVM_pushbool(ApexVM *vm, bool b) {
 }
 
 /**
- * Retrieves a value from an array by its index.
- *
- * This function takes a virtual machine, an array, and an index, and returns
- * the value associated with the index in the array. If the index is not present
- * in the array, it raises a runtime error with the message "invalid array
- * index: <indexstr>" where <indexstr> is the string representation of the
- * index.
- *
- * @param vm A pointer to the virtual machine instance to use for error
- *           reporting.
- * @param array A pointer to the array to retrieve the value from.
- * @param index The index of the value to retrieve.
- *
- * @return The value associated with the given index in the array.
- */
-ApexValue get_array_element(ApexVM *vm, Array *array, ApexValue index) {
-    ApexValue value;
-
-    if (!apexVal_arrayget(&value, array, index)) {
-        char *indexstr = apexVal_tostr(index);
-        apexErr_runtime(vm, "invalid array index: %s", indexstr);
-    }
-
-    return value;
-}
-
-/**
  * Pops the top value off the stack and returns it.
  *
  * This function is equivalent to a call to stack_pop, and is provided as a
@@ -457,27 +450,27 @@ static ApexValue vm_add(ApexVM *vm, ApexValue a, ApexValue b) {
         return apexVal_makestr(newstr);
     }
     if (a.type == APEX_VAL_BOOL && b.type == APEX_VAL_BOOL) {
-        apexErr_type(vm, "cannot perform arithmetic on a boolean value");
+        apexErr_runtime(vm, "cannot perform arithmetic on a boolean value");
     }
     if ((a.type == APEX_VAL_STR && b.type == APEX_VAL_INT) || 
         (a.type == APEX_VAL_INT && b.type == APEX_VAL_STR)) {
-        apexErr_type(vm, "cannot add string to an int");
+        apexErr_runtime(vm, "cannot add string to an int");
     }
     if ((a.type == APEX_VAL_STR && b.type == APEX_VAL_FLT) || 
         (a.type == APEX_VAL_FLT && b.type == APEX_VAL_STR)) {
-        apexErr_type(vm, "cannot add string to a flt");
+        apexErr_runtime(vm, "cannot add string to a flt");
     }
     if ((a.type == APEX_VAL_STR && b.type == APEX_VAL_DBL) ||
         (a.type == APEX_VAL_DBL && b.type == APEX_VAL_STR)) {
-        apexErr_type(vm, "cannot add string to a dbl");
+        apexErr_runtime(vm, "cannot add string to a dbl");
     }
     if ((a.type == APEX_VAL_INT && b.type == APEX_VAL_BOOL) || 
         (a.type == APEX_VAL_BOOL && b.type == APEX_VAL_INT)) {
-        apexErr_type(vm, "cannot add bool to an int");
+        apexErr_runtime(vm, "cannot add bool to an int");
     }
     if ((a.type == APEX_VAL_STR && b.type == APEX_VAL_BOOL) || 
         (a.type == APEX_VAL_BOOL && b.type == APEX_VAL_STR)) {
-        apexErr_type(vm, "cannot add string to a bool");
+        apexErr_runtime(vm, "cannot add string to a bool");
     }
     return apexVal_makenull();
 }
@@ -520,7 +513,7 @@ static ApexValue vm_sub(ApexVM *vm,ApexValue a, ApexValue b) {
     if (a.type == APEX_VAL_DBL && b.type == APEX_VAL_FLT) {
         return apexVal_makedbl(a.dblval - b.fltval);
     }
-    apexErr_type(
+    apexErr_runtime(
         vm, "cannot subtract %s from %s", 
         apexVal_typestr(a), 
         apexVal_typestr(b));
@@ -579,7 +572,8 @@ static ApexValue vm_mul(ApexVM *vm, ApexValue a, ApexValue b) {
 
 #define CHECK_DIV_ZERO(vm, x) do { \
     if (x == 0) { \
-        apexErr_type(vm, "division by zero"); \
+        apexErr_runtime(vm, "division by zero"); \
+        return apexVal_makenull(); \
     } \
 } while (0)
 
@@ -744,16 +738,20 @@ static ApexValue cmp(ApexValue a, ApexValue b, OpCode opcode) {
     return apexVal_makebool(result);
 }
 
+
 /**
- * Increments a value by one.
+ * Increments the value of the given ApexValue.
  *
- * If the value is an integer, float, or double, it is incremented by one.
- * If the value is not one of these types, an error is raised.
+ * This function increments the value of the given ApexValue, handling
+ * integers, floats, and doubles.
  *
- * @param vm The virtual machine on which to perform the operation.
- * @param value The value to increment.
+ * If the value is not a numeric type, an error is raised.
+ *
+ * @param vm The ApexVM containing the value to increment.
+ * @param value The ApexValue to increment.
+ * @return True on success, false on error.
  */
-static void incvalue(ApexVM *vm, ApexValue *value) {
+static bool incvalue(ApexVM *vm, ApexValue *value) {
     switch (value->type) {
     case APEX_VAL_INT:
         value->intval++;
@@ -766,8 +764,11 @@ static void incvalue(ApexVM *vm, ApexValue *value) {
         break;
     default:
         apexErr_runtime(vm, "cannot increment %s", apexVal_typestr(*value));
+        return false;
     }
+    return true;
 }
+
 
 /**
  * Decrements the value of the given ApexValue.
@@ -779,8 +780,9 @@ static void incvalue(ApexVM *vm, ApexValue *value) {
  *
  * @param vm The ApexVM containing the value to decrement.
  * @param value The ApexValue to decrement.
+ * @return True on success, false on error.
  */
-static void decvalue(ApexVM *vm, ApexValue *value) {
+static bool decvalue(ApexVM *vm, ApexValue *value) {
     switch (value->type) {
     case APEX_VAL_INT:
         value->intval--;
@@ -793,43 +795,9 @@ static void decvalue(ApexVM *vm, ApexValue *value) {
         break;
     default:
         apexErr_runtime(vm, "cannot decrement %s", apexVal_typestr(*value));
+        return false;
     }
-}
-
-/**
- * Retrieves the value of a local variable from the stack.
- *
- * This function looks up a local variable by name and returns its value.
- * If the variable is not found, an error is raised.
- *
- * @param vm The ApexVM containing the local variable.
- * @param name The name of the local variable to look up.
- * @return The value associated with the given local variable.
- */
-ApexValue getlval(ApexVM *vm, const char *name) {
-    ApexValue value;
-    if (!apexSym_getlocal(&value, &vm->local_scopes, name)) {
-        apexErr_runtime(vm, "local variable '%s' not found", name);
-    }
-    return value;
-}
-
-/**
- * Retrieves the value of a global variable from the symbol table.
- *
- * This function looks up a global variable by name and returns its value.
- * If the variable is not found, an error is raised.
- *
- * @param vm The ApexVM containing the global variable.
- * @param name The name of the global variable to look up.
- * @return The value associated with the given global variable.
- */
-ApexValue getgval(ApexVM *vm, const char *name) {
-    ApexValue value;
-    if (!apexSym_getglobal(&value, &vm->global_table, name)) {
-        apexErr_runtime(vm, "global variable '%s' not found", name);
-    }
-    return value;
+    return true;
 }
 
 /**
@@ -841,7 +809,7 @@ ApexValue getgval(ApexVM *vm, const char *name) {
  *
  * @param vm The ApexVM to dispatch instructions for.
  */
-void vm_dispatch(ApexVM *vm) {
+bool vm_dispatch(ApexVM *vm) {
     for (;;) {
         Ins *ins = next_ins(vm);
 
@@ -861,33 +829,49 @@ void vm_dispatch(ApexVM *vm) {
             stack_pop(vm);
             break;
 
-        case OP_ADD: 
-            stack_push(vm, vm_add(vm, stack_pop(vm), stack_pop(vm)));
+        case OP_ADD: {
+            ApexValue value = vm_add(vm, stack_pop(vm), stack_pop(vm));
+            if (value.type == APEX_VAL_NULL) {
+                return false;
+            }
+            stack_push(vm, value);
             break;        
-
-        case OP_SUB: 
-            stack_push(vm, vm_sub(vm, stack_pop(vm), stack_pop(vm)));
+        }
+        case OP_SUB: {
+            ApexValue value = vm_sub(vm, stack_pop(vm), stack_pop(vm));
+            if (value.type == APEX_VAL_NULL) {
+                return false;
+            }
+            stack_push(vm, value);
             break;        
-
-        case OP_MUL: 
-            stack_push(vm, vm_mul(vm, stack_pop(vm), stack_pop(vm)));
+        }
+        case OP_MUL: {
+            ApexValue value = vm_mul(vm, stack_pop(vm), stack_pop(vm));
+            if (value.type == APEX_VAL_NULL) {
+                return false;
+            }
+            stack_push(vm, value);
             break;        
-
-        case OP_DIV:  
-            stack_push(vm, vm_div(vm, stack_pop(vm), stack_pop(vm)));
+        }
+        case OP_DIV: {
+            ApexValue value = vm_div(vm, stack_pop(vm), stack_pop(vm));
+            if (value.type == APEX_VAL_NULL) {
+                return false;
+            }
+            stack_push(vm, value);
             break;        
-
+        }
         case OP_RETURN: {
             ApexValue ret_val;
             int ret_addr = 0;
-            CallFrame frame = pop_callframe(vm, ins->srcloc);
+            CallFrame frame = pop_callframe(vm, ins->parsestate);
             if (vm->obj_context.type == APEX_VAL_OBJ && 
                 frame.fn_name == apexStr_new("new", 3)->value) {
                 ApexValue obj_context = vm->obj_context;                
                 if (vm->stack_top == 1) {
                     ret_addr = stack_pop(vm).intval;
                 } else if (vm->stack_top > 1) {
-                    apexErr_warn(vm->srcloc, "return value of 'new' is discarded'");
+                    apexErr_error(vm->parsestate, "warning: return value of 'new' is discarded'");
                     stack_pop(vm);
                     ret_addr = stack_pop(vm).intval;
                 }                
@@ -909,14 +893,28 @@ void vm_dispatch(ApexVM *vm) {
         case OP_CALL: {
             ApexValue fnval = stack_pop(vm);
             int argc = ins->value.intval;
+
+            if (fnval.type == APEX_VAL_CFN) {
+                ApexCfn cfn = fnval.cfnval;
+                if (cfn.argc != argc) {
+                    apexErr_runtime(vm, "expected %d arguments, got %d", cfn.argc, argc);
+                    return false;
+                }
+                if (cfn.fn(vm) != 0) {
+                    return false;
+                }
+                break;
+            }
+
             int ret_addr = vm->ip;
             Fn *fn = fnval.fnval;
             
             if (argc != fn->param_n) {
                 apexErr_runtime(vm, "expected %d arguments, got %d", fn->param_n, argc);
+                return false;
             }
 
-            push_callframe(vm, fn->name, ins->srcloc);
+            push_callframe(vm, fn->name, ins->parsestate);
             push_scope(&vm->local_scopes);            
             
             for (int i = 0; i < fn->param_n; i++) {
@@ -957,6 +955,7 @@ void vm_dispatch(ApexVM *vm) {
                 ApexString *str = array.strval;
                 if (index.intval >= (int)str->len) {
                     apexErr_runtime(vm, "index out of bounds: %d", index.intval);
+                    return false;
                 }
                 char chstr[1];                
                 snprintf(chstr, 2, "%c", str->value[index.intval]);
@@ -965,12 +964,20 @@ void vm_dispatch(ApexVM *vm) {
                 break;
             }
             case APEX_VAL_ARR:
-                ApexValue value = get_array_element(vm, array.arrval, index);
+                ApexValue value;
+                if (!apexVal_arrayget(&value, array.arrval, index)) {
+                    char *indexstr = apexVal_tostr(index);
+                    apexErr_runtime(vm, "invalid array index: %s", indexstr);
+                    return false;
+                }
                 stack_push(vm, value);
                 break;            
             default:
                 if (array.type != APEX_VAL_ARR) {
-                    apexErr_type(vm, "cannot index non-array value: %s", apexVal_typestr(array));
+                    apexErr_runtime(vm, 
+                        "cannot index non-array value: %s", 
+                        apexVal_typestr(array));
+                    return false;
                 }
             }           
             break;
@@ -992,77 +999,95 @@ void vm_dispatch(ApexVM *vm) {
                 Fn *fn = newFnVal.fnval;
                 int argc = ins->value.intval;
                 if (argc != fn->param_n) {
-                    apexErr_arg(vm, "expected %d arguments, got %d", fn->param_n, argc);
+                    apexErr_runtime(vm, "expected %d arguments, got %d", fn->param_n, argc);
+                    return false;
                 }
-                push_callframe(vm, fn->name, ins->srcloc);
+                push_callframe(vm, fn->name, ins->parsestate);
                 push_scope(&vm->local_scopes);
                 for (int i = 0; i < fn->param_n; i++) {
                     ApexValue arg = stack_pop(vm);
                     const char *name = fn->params[i];                
                     apexSym_setlocal(&vm->local_scopes, name, arg);
                 }
-                ApexObject *newobj = apexVal_newobject();
-                for (int i = 0; i < obj->size; i++) {
-                    ApexObjectEntry *entry = obj->entries[i];
-                    if (entry) {                   
-                        apexVal_objectset(newobj, entry->key, entry->value);
-                    }
-                }
+                ApexObject *newobj = apexVal_objectcpy(obj);                
                 vm->obj_context = apexVal_makeobj(newobj);
                 stack_push(vm, apexVal_makeint(ret_addr));
                 vm->ip = fn->addr;
             } else {
                 if (ins->value.intval > 0) {
-                    apexErr_arg(vm, "expected 0 arguments, got %d", vm->stack_top);
+                    apexErr_runtime(vm, "expected 0 arguments, got %d", vm->stack_top);
+                    return false;
                 }
-                ApexObject *newobj = apexVal_newobject();
-                for (int i = 0; i < obj->size; i++) {
-                    ApexObjectEntry *entry = obj->entries[i];
-                    if (entry) {
-                        apexVal_objectset(newobj, entry->key, entry->value);
-                    }
-                }
+                ApexObject *newobj = apexVal_objectcpy(obj);
                 stack_push(vm, apexVal_makeobj(newobj));
             }        
             break;
         }
-        case OP_CREATE_OBJECT:
+        case OP_CREATE_OBJECT: {
             ApexValue objval;
             ApexValue name = stack_pop(vm);
             if (!apexSym_getglobal(&objval, &vm->global_table, name.strval->value)) {
                 apexErr_runtime(vm, "object '%s' not defined", name.strval->value);
+                return false;
             }
             ApexObject *obj = objval.objval;
             for (int i = ins->value.intval; i; i--) {
                 ApexValue value = stack_pop(vm);
                 ApexValue key = stack_pop(vm);            
                 apexVal_objectset(obj, key.strval->value, value);
-            }
-            stack_push(vm, apexVal_maketype(obj));
+            }            
             break;
+        }
         case OP_GET_MEMBER: {
             ApexValue objval = stack_pop(vm);
             ApexObject *obj = objval.objval;
             ApexValue value;
 
-            if (!apexVal_objectget(&value,obj, ins->value.strval->value)) {
-                apexErr_runtime(vm, "object '%s' has no field '%s'", obj->name, ins->value.strval->value);
+            if (!apexVal_objectget(&value, obj, ins->value.strval->value)) {
+                apexErr_runtime(vm, 
+                    "object '%s' has no field '%s'", 
+                    obj->name, ins->value.strval->value);
+                return false;
             }
 
             stack_push(vm, value);
             break;
         }
         case OP_CALL_MEMBER: { // obj.method(arg1, arg2, ...)
-            ApexValue fnval = stack_pop(vm);
-            Fn *fn = fnval.fnval;
-            int argc = ins->value.intval;
-            int ret_addr = vm->ip;
+            char *name = ins->value.strval->value;
+            int argc = stack_pop(vm).intval;
+            ApexValue objval = stack_top(vm);
+            ApexValue fnval;
 
-            if (argc != fn->param_n) {
-                apexErr_arg(vm, "expected %d arguments, got %d", fn->param_n, argc);
+            if (!apexVal_objectget(&fnval, objval.objval, name)) {
+                apexErr_runtime(vm, "object '%s' has no field '%s'", objval.objval->name, name);
+                return false;
             }
 
-            push_callframe(vm, fn->name, ins->srcloc);
+            if (fnval.type == APEX_VAL_CFN) {
+                ApexCfn cfn = fnval.cfnval;
+                if (argc != cfn.argc) {
+                    apexErr_runtime(vm, "expected %d arguments, got %d", cfn.argc, argc);
+                    return false;
+                }
+                if (cfn.fn(vm) != 0) {
+                    return false;
+                }
+                if (vm->stack_top > 0 && stack_top(vm).type == APEX_VAL_OBJ) {
+                    stack_pop(vm);
+                }
+                break;
+            }
+            Fn *fn = fnval.fnval;
+            int ret_addr = vm->ip;
+            stack_pop(vm);
+
+            if (argc != fn->param_n) {
+                apexErr_runtime(vm, "expected %d arguments, got %d", fn->param_n, argc);
+                return false;
+            }
+
+            push_callframe(vm, fn->name, ins->parsestate);
             push_scope(&vm->local_scopes);            
             
             for (int i = 0; i < fn->param_n; i++) {
@@ -1092,6 +1117,7 @@ void vm_dispatch(ApexVM *vm) {
             ApexValue value;
             if (!apexSym_getglobal(&value, &vm->global_table, name)) {
                 apexErr_runtime(vm, "global variable '%s' not found", name);
+                return false;
             }
             stack_push(vm, value);
             break;
@@ -1109,6 +1135,7 @@ void vm_dispatch(ApexVM *vm) {
             if (name == apexStr_new("this", 4)) {
                 if (vm->obj_context.type == APEX_VAL_NULL) {
                     apexErr_runtime(vm, "cannot access 'this' outside of object context");
+                    return false;
                 }
                 stack_push(vm, vm->obj_context);
                 break;
@@ -1116,6 +1143,7 @@ void vm_dispatch(ApexVM *vm) {
 
             if (!apexSym_getlocal(&value, &vm->local_scopes, name->value)) {
                 apexErr_runtime(vm, "local variable '%s' not found", name->value);
+                return false;
             }
             stack_push(vm, value);
             break;
@@ -1124,18 +1152,31 @@ void vm_dispatch(ApexVM *vm) {
         #define GET_ARRAY_DATA \
             ApexValue index = stack_pop(vm); \
             ApexValue array = stack_pop(vm); \
-            ApexValue value = get_array_element(vm, array.arrval, index)
+            ApexValue value; \
+            if (!apexVal_arrayget(&value, array.arrval, index)) { \
+                char *indexstr = apexVal_tostr(index); \
+                apexErr_runtime(vm, "invalid array index: %s", indexstr); \
+                return false; \
+            }
 
         case OP_PRE_INC_LOCAL: { // ++local_var
             if (vm->stack_top > 1) {
                 GET_ARRAY_DATA;
-                incvalue(vm, &value);
+                if (!incvalue(vm, &value)) {
+                    return false;
+                }
                 apexVal_arrayset(array.arrval, index, value);
                 stack_push(vm, value);
             } else {
                 const char *name = ins->value.strval->value;
-                ApexValue value = getlval(vm, name);
-                incvalue(vm, &value);
+                ApexValue value;
+                if (!apexSym_getlocal(&value, &vm->local_scopes, name)) {
+                    apexErr_runtime(vm, "local variable '%s' not found", name);
+                    return false;
+                }
+                if (!incvalue(vm, &value)) {
+                    return false;
+                }
                 apexSym_setlocal(&vm->local_scopes, name, value);      
                 stack_push(vm, value);
             }                   
@@ -1145,14 +1186,22 @@ void vm_dispatch(ApexVM *vm) {
             if (vm->stack_top > 1) {
                 GET_ARRAY_DATA;
                 ApexValue prev = value;
-                incvalue(vm, &value);
+                if (!incvalue(vm, &value)) {
+                    return false;
+                }
                 apexVal_arrayset(array.arrval, index, value);
                 stack_push(vm, prev);
             } else {
                 const char *name = ins->value.strval->value;
-                ApexValue value = getlval(vm, name);      
+                ApexValue value;
+                if (!apexSym_getlocal(&value, &vm->local_scopes, name)) {
+                    apexErr_runtime(vm, "local variable '%s' not found", name);
+                    return false;
+                }   
                 ApexValue prev = value;
-                incvalue(vm, &value);
+                if (!incvalue(vm, &value)) {
+                    return false;
+                }
                 apexSym_setlocal(&vm->local_scopes, name, value);
                 stack_push(vm, prev);
             }
@@ -1161,13 +1210,21 @@ void vm_dispatch(ApexVM *vm) {
         case OP_PRE_DEC_LOCAL: { // --local_var
             if (vm->stack_top > 1) {
                 GET_ARRAY_DATA;
-                decvalue(vm, &value);
+                if (!decvalue(vm, &value)) {
+                    return false;
+                }
                 apexVal_arrayset(array.arrval, index, value);
                 stack_push(vm, value);
             } else {
                 const char *name = ins->value.strval->value;
-                ApexValue value = getlval(vm, name);
-                decvalue(vm, &value);
+                ApexValue value;
+                if (!apexSym_getlocal(&value, &vm->local_scopes, name)) {
+                    apexErr_runtime(vm, "local variable '%s' not found", name);
+                    return false;
+                }  
+                if (!decvalue(vm, &value)) {
+                    return false;
+                }
                 apexSym_setlocal(&vm->local_scopes, name, value);
                 stack_push(vm, value);
             }
@@ -1177,14 +1234,22 @@ void vm_dispatch(ApexVM *vm) {
             if (vm->stack_top > 1) {
                 GET_ARRAY_DATA;
                 ApexValue prev = value;
-                decvalue(vm, &value);
+                if (!decvalue(vm, &value)) {
+                    return false;
+                }
                 apexVal_arrayset(array.arrval, index, value);
                 stack_push(vm, prev);
             } else {
                 const char *name = ins->value.strval->value;
-                ApexValue value = getlval(vm, name);          
+                ApexValue value;
+                if (!apexSym_getlocal(&value, &vm->local_scopes, name)) {
+                    apexErr_runtime(vm, "local variable '%s' not found", name);
+                    return false;
+                }           
                 ApexValue prev = value;
-                decvalue(vm, &value);
+                if (!decvalue(vm, &value)) {
+                    return false;
+                }
                 apexSym_setlocal(&vm->local_scopes, name, value);
                 stack_push(vm, prev);
             }
@@ -1193,13 +1258,21 @@ void vm_dispatch(ApexVM *vm) {
         case OP_PRE_INC_GLOBAL: { // ++global_var
             if (vm->stack_top > 1) {
                 GET_ARRAY_DATA;
-                incvalue(vm, &value);
+                if (!incvalue(vm, &value)) {
+                    return false;
+                }
                 apexVal_arrayset(array.arrval, index, value);
                 stack_push(vm, value);
             } else {
                 const char *name = ins->value.strval->value;
-                ApexValue value = getgval(vm, name);
-                incvalue(vm, &value);
+                ApexValue value;
+                if (!apexSym_getglobal(&value, &vm->global_table, name)) {
+                    apexErr_runtime(vm, "global variable '%s' not found", name);
+                    return false;
+                }
+                if (!incvalue(vm, &value)) {
+                    return false;
+                }
                 apexSym_setglobal(&vm->global_table, name, value);
                 stack_push(vm, value);
             }
@@ -1209,14 +1282,22 @@ void vm_dispatch(ApexVM *vm) {
             if (vm->stack_top > 1) {
                 GET_ARRAY_DATA;
                 ApexValue prev = value;
-                incvalue(vm, &value);
+                if (!incvalue(vm, &value)) {
+                    return false;
+                }
                 apexVal_arrayset(array.arrval, index, value);
                 stack_push(vm, prev);
             } else {
                 const char *name = ins->value.strval->value;
-                ApexValue value = getgval(vm, name);
+                ApexValue value;
+                if (!apexSym_getglobal(&value, &vm->global_table, name)) {
+                    apexErr_runtime(vm, "global variable '%s' not found", name);
+                    return false;
+                }
                 ApexValue prev = value;
-                incvalue(vm, &value);
+                if (!incvalue(vm, &value)) {
+                    return false;
+                }
                 apexSym_setglobal(&vm->global_table, name, value);
                 stack_push(vm, prev);
             }
@@ -1225,13 +1306,21 @@ void vm_dispatch(ApexVM *vm) {
         case OP_PRE_DEC_GLOBAL: { // --global_var
             if (vm->stack_top > 1) {
                 GET_ARRAY_DATA;
-                decvalue(vm, &value);
+                if (!decvalue(vm, &value)) {
+                    return false;
+                }
                 apexVal_arrayset(array.arrval, index, value);
                 stack_push(vm, value);
             } else {
                 const char *name = ins->value.strval->value;
-                ApexValue value = getgval(vm, name);
-                decvalue(vm, &value);
+                ApexValue value;
+                if (!apexSym_getglobal(&value, &vm->global_table, name)) {
+                    apexErr_runtime(vm, "global variable '%s' not found", name);
+                    return false;
+                }
+                if (!decvalue(vm, &value)) {
+                    return false;
+                }
                 apexSym_setglobal(&vm->global_table, name, value);
                 stack_push(vm, value);
                 break;
@@ -1241,14 +1330,22 @@ void vm_dispatch(ApexVM *vm) {
             if (vm->stack_top > 1) {
                 GET_ARRAY_DATA;
                 ApexValue prev = value;
-                decvalue(vm, &value);
+                if (!decvalue(vm, &value)) {
+                    return false;
+                }
                 apexVal_arrayset(array.arrval, index, value);
                 stack_push(vm, prev);
             } else {
                 const char *name = ins->value.strval->value;
-                ApexValue value = getgval(vm, name);
+                ApexValue value;
+                if (!apexSym_getglobal(&value, &vm->global_table, name)) {
+                    apexErr_runtime(vm, "global variable '%s' not found", name);
+                    return false;
+                }
                 ApexValue prev = value;
-                decvalue(vm, &value);
+                if (!decvalue(vm, &value)) {
+                    return false;
+                }
                 apexSym_setglobal(&vm->global_table, name, value);
                 stack_push(vm, prev);
             }
@@ -1267,7 +1364,8 @@ void vm_dispatch(ApexVM *vm) {
             } else if (val.type == APEX_VAL_DBL) {
                 stack_push(vm, apexVal_makedbl(-val.dblval));
             } else {
-                apexErr_type(vm, "cannot negate %s", apexVal_typestr(val));
+                apexErr_runtime(vm, "cannot negate %s", apexVal_typestr(val));
+                return false;
             }
             break;
         }
@@ -1280,7 +1378,8 @@ void vm_dispatch(ApexVM *vm) {
             } else if (val.type == APEX_VAL_DBL) {
                 stack_push(vm, apexVal_makedbl(+val.dblval));
             } else {
-                apexErr_type(vm, "cannot positive %s", apexVal_typestr(val));
+                apexErr_runtime(vm, "cannot positive %s", apexVal_typestr(val));
+                return false;
             }
             break;
         }
@@ -1290,10 +1389,18 @@ void vm_dispatch(ApexVM *vm) {
             const char *lib_name = lib_name_val.strval->value;
             const char *fn_name = fn_name_val.strval->value;
             ApexLibFn lib_fn = apexLib_get(lib_name, fn_name);
-            if (!lib_fn) {
+            if (!lib_fn.name) {
                 apexErr_runtime(vm, "undefined library function '%s:%s'", lib_name, fn_name);
+                return false;
             }
-            lib_fn(vm);
+            int argc = ins->value.intval;
+            if (argc != lib_fn.argc) {
+                apexErr_runtime(vm, 
+                    "function '%s:%s' expects %d arguments, got %d", 
+                    lib_name, fn_name, lib_fn.argc, argc);
+                return false;
+            }
+            lib_fn.fn(vm);
             break;
         }
         case OP_FUNCTION_START:
@@ -1317,7 +1424,8 @@ void vm_dispatch(ApexVM *vm) {
             break;
         }
         case OP_HALT:
-            return;        
+            return true;        
         }
     }
+    return true;
 }

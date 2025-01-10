@@ -4,6 +4,7 @@
 typedef struct {
     int lineno;
     const char *filename;
-} SrcLoc;
+    bool exit_on_error;
+} ParseState;
 
 #endif

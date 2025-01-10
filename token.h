@@ -1,7 +1,7 @@
 #ifndef TOKEN_H
 #define TOKEN_H
 
-#include "string.h"
+#include "apexStr.h"
 #include "srcloc.h"
 
 typedef enum {
@@ -64,7 +64,7 @@ typedef enum {
 typedef struct {
     TokenType type;
     ApexString *str;
-    SrcLoc srcloc;
+    ParseState parsestate;
 } Token;
 
 #endif

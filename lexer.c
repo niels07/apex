@@ -3,7 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include "lexer.h"
-#include "string.h"
+#include "apexStr.h"
 #include "mem.h"
 #include "error.h"
 
@@ -182,15 +182,36 @@ ApexString *get_token_str(TokenType type) {
  *                 code is not from a file.
  * @param source The source code to parse.
  */
-void init_lexer(Lexer *lexer, const char *filename, const char *source) {
+void init_lexer(Lexer *lexer, const char *filename, char *source) {
     if (!globals_initialized) {
         init_lexer_globals();
     }
     lexer->source = source;
-    lexer->length = strlen(source);
+    if (!source) {
+        lexer->length = 0;
+    } else {
+        lexer->length = strlen(source);
+    }
     lexer->position = 0;
-    lexer->srcloc.lineno = 1;
-    lexer->srcloc.filename = filename;
+    lexer->parsestate.lineno = 1;
+    lexer->parsestate.filename = filename;
+    lexer->parsestate.exit_on_error = true;
+}
+
+void apexLex_feedline(Lexer *lexer, const char *line) {
+    if (!lexer->source) {
+        size_t len = strlen(line);
+        lexer->source = apexMem_alloc(len + 1);
+        strncpy(lexer->source, line, len);
+        lexer->source[len] = '\0';
+        lexer->length = len;
+    } else {
+        size_t len = lexer->length + strlen(line);
+        char *source = apexMem_realloc(lexer->source, len + 1); // +1 for the null terminator
+        strcat(source, line);
+        lexer->source = source;
+        lexer->length = len;
+    }
 }
 
 /**
@@ -209,7 +230,7 @@ Token *create_token(Lexer *lexer, TokenType type, ApexString *str) {
     Token *token = apexMem_alloc(sizeof(Token));
     token->type = type;
     token->str = str;
-    token->srcloc = lexer->srcloc;;
+    token->parsestate = lexer->parsestate;;
     return token;
 }
 
@@ -273,7 +294,7 @@ static char advance(Lexer *lexer) {
 static void skip_whitespace(Lexer *lexer) {
     while (isspace(peek(lexer))) {
         if (peek(lexer) == '\n') {
-            lexer->srcloc.lineno++;
+            lexer->parsestate.lineno++;
         }
         advance(lexer);
     }
@@ -354,6 +375,7 @@ static Token *scan_ident(Lexer *lexer) {
     }
 
     int len = lexer->position - start;
+    
     ApexString *ident = apexStr_new(lexer->source + start, len);
 
     if (ident == IF_STR) {
@@ -442,7 +464,7 @@ static Token *scan_str(Lexer *lexer) {
     if (peek(lexer) == '"') {
         advance(lexer); // Consume closing quote.
     } else {
-        apexErr_syntax(lexer, "Unterminated string literal.");
+        apexErr_syntax(lexer->parsestate, "unterminated string literal");
     }
     buffer[i] = '\0';
     
@@ -570,6 +592,6 @@ Token *get_next_token(Lexer *lexer) {
         return create_token(lexer, TOKEN_COLON, COLON_STR);
     }
 
-    apexErr_syntax(lexer, "Unexpected character: '%c'", c);
+    apexErr_syntax(lexer->parsestate, "unexpected character: '%c'", c);
     return NULL;
 }

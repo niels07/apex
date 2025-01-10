@@ -62,13 +62,13 @@ typedef enum {
 
 typedef struct {
     const char *fn_name;
-    SrcLoc srcloc;
+    ParseState parsestate;
 } CallFrame;
 
 typedef struct {
     OpCode opcode;
     ApexValue value;
-    SrcLoc srcloc;
+    ParseState parsestate;
 } Ins;
 
 typedef struct {
@@ -77,7 +77,7 @@ typedef struct {
     int ins_size;
 } Chunk;
 
-typedef struct {
+typedef struct ApexVM {
     CallFrame call_stack[CALL_STACK_MAX];
     int call_stack_top;
     bool in_function;
@@ -89,7 +89,7 @@ typedef struct {
     int ip;
     int loop_start;
     int loop_end;
-    SrcLoc srcloc;
+    ParseState parsestate;
     SymbolTable global_table;
     ScopeStack local_scopes;
 } ApexVM;
@@ -104,7 +104,8 @@ extern ApexValue apexVM_pop(ApexVM *vm);
 extern ApexValue apexVM_peek(ApexVM *vm, int offset);
 extern void print_vm_instructions(ApexVM *vm);
 extern void init_vm(ApexVM *vm);
+extern void apexVM_reset(ApexVM *vm);
 extern void free_vm(ApexVM *vm);
-extern void vm_dispatch(ApexVM *vm);
+extern bool vm_dispatch(ApexVM *vm);
 
 #endif

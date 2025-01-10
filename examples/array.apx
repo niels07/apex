@@ -1,21 +1,21 @@
 x = 5;
 arr1 = ["one", "two", "three"];
-print(arr1[0]);
-print(arr1[1]);
+io:print(arr1[0]);
+io:print(arr1[1]);
 
 arr2 = [
     "a" => 2,
     "b" => "xxx",
     4 => "x"
 ];
-print(arr2["a"]);
-print(arr2["b"]);
+io:print(arr2["a"]);
+io:print(arr2["b"]);
 
 arr3 = ["a", "b", "c", "d"];
 
 for (i = 0; i < 4; i++) {
-    print(arr3[i]);
+    io:print(arr3[i]);
 }
 
 arr2["b"] = "test";
-print(arr2["b"]);
+io:print(arr2["b"]);

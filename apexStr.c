@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include "string.h"
+#include "apexStr.h"
 #include "mem.h"
 #include "value.h"
 #include "util.h"
@@ -100,7 +100,7 @@ ApexString *apexStr_save(char *str, size_t n) {
 ApexString *apexStr_new(const char *str, size_t n) {
     unsigned int index = hash_string(str, n);
     ApexString *entry = string_table[index];
-    
+
     while (entry != NULL) {
         if (entry->len == n && strncmp(entry->value, str, n) == 0) {
             return entry;

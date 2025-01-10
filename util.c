@@ -8,7 +8,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include "mem.h"
-#include "string.h"
+#include "apexStr.h"
 
 /**
  * Computes a hash value for a given string.

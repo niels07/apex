@@ -2,7 +2,10 @@
 #define VALUE_H
 
 #include <stdbool.h>
-#include "string.h"
+#include "apexStr.h"
+
+struct ApexVM; 
+typedef struct ApexVM ApexVM;
 
 typedef enum {
     APEX_VAL_INT,
@@ -11,11 +14,19 @@ typedef enum {
     APEX_VAL_STR,
     APEX_VAL_BOOL,
     APEX_VAL_FN,
+    APEX_VAL_CFN,
+    APEX_VAL_PTR,
     APEX_VAL_ARR,
     APEX_VAL_TYPE,
     APEX_VAL_OBJ,
     APEX_VAL_NULL
 } ValueType;
+
+typedef struct {
+    int argc;
+    char *name;
+    int (*fn)(ApexVM *);
+} ApexCfn;
 
 typedef struct {
     const char *name;
@@ -37,6 +48,8 @@ typedef struct {
         ApexString *strval;
         bool boolval;
         Fn *fnval;
+        ApexCfn cfnval;
+        void *ptrval;
         Array *arrval;
         ApexObject *objval;
     };
@@ -78,6 +91,7 @@ struct ApexObject {
 #define apexVal_type(v) (v.type)
 
 extern Fn *apexVal_newfn(const char *name, const char **params, int param_n, int addr);
+extern ApexCfn apexVal_newcfn(char *name, int argc, int (*fn)(ApexVM *));
 extern const char *apexVal_typestr(ApexValue value);
 extern char *apexVal_tostr(ApexValue value);
 extern ApexValue apexVal_makeint(int value);
@@ -86,16 +100,19 @@ extern ApexValue apexVal_makedbl(double value);
 extern ApexValue apexVal_makestr(ApexString *value);
 extern ApexValue apexVal_makebool(bool value);
 extern ApexValue apexVal_makefn(Fn *function);
+extern ApexValue apexVal_makecfn(ApexCfn cfn);
 extern ApexValue apexVal_makearr(Array *arr);
 extern ApexValue apexVal_maketype(ApexObject *obj);
 extern ApexValue apexVal_makeobj(ApexObject *obj);
+extern ApexValue apexVal_makeptr(void *ptr);
 extern ApexValue apexVal_makenull(void);
 extern bool apexVal_tobool(ApexValue value);
 extern int apexVal_arrlen(ApexValue value);
 extern void apexVal_retain(ApexValue value);
 extern void apexVal_release(ApexValue value);
 extern Array *apexVal_newarray(void);
-extern ApexObject *apexVal_newobject(void);
+extern ApexObject *apexVal_newobject(const char *name);
+extern ApexObject *apexVal_objectcpy(ApexObject *object);
 extern void apexVal_freearray(Array *array);
 extern void apexVal_freeobject(ApexObject *object);
 extern void apexVal_arrayset(Array *array, ApexValue key, ApexValue value);

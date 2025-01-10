@@ -3,9 +3,31 @@
 #include "value.h"
 #include "vm.h"
 #include "mem.h"
-#include "string.h"
+#include "apexStr.h"
 #include "error.h"
 
+/**
+ * Returns a string representation of an ApexValue type.
+ *
+ * This function takes an ApexValue and returns a string representation of its
+ * type. The strings are as follows:
+ * - int: APEX_VAL_INT
+ * - flt: APEX_VAL_FLT
+ * - dbl: APEX_VAL_DBL
+ * - str: APEX_VAL_STR
+ * - bool: APEX_VAL_BOOL
+ * - fn: APEX_VAL_FN
+ * - arr: APEX_VAL_ARR
+ * - cfn: APEX_VAL_CFN
+ * - type: APEX_VAL_TYPE
+ * - obj: APEX_VAL_OBJ
+ * - ptr: APEX_VAL_PTR
+ * - null: APEX_VAL_NULL
+ *
+ * @param value The ApexValue to get a string representation of its type.
+ *
+ * @return A string representation of the ApexValue type.
+ */
 const char *apexVal_typestr(ApexValue value) {
     switch (value.type) {
     case APEX_VAL_INT:
@@ -22,10 +44,14 @@ const char *apexVal_typestr(ApexValue value) {
         return "fn";
     case APEX_VAL_ARR:
         return "arr";
+    case APEX_VAL_CFN:
+        return "cfn";
     case APEX_VAL_TYPE:
         return "type";
     case APEX_VAL_OBJ:
         return "obj";
+    case APEX_VAL_PTR:
+        return "ptr";
     case APEX_VAL_NULL:
         return "null";
     }
@@ -63,6 +89,36 @@ static char *fntostr(Fn *fn) {
     return apexStr_save(str, n)->value;
 }
 
+/**
+ * Converts an ApexCfn to its string representation.
+ *
+ * This function takes a C function pointer and returns a string
+ * representation formatted as "[cfunction <address>]".
+ *
+ * @param fn The ApexCfn function pointer to convert.
+ * @return A char pointer to the string representation of the C function.
+ */
+static char *cfntostr(ApexCfn fn) {
+    size_t size = 32 + strlen(fn.name);
+    char *str = apexMem_alloc(size + 1);
+    snprintf(str, size, "[cfunction %s: %p]", fn.name, fn.fn);
+    return apexStr_save(str, size)->value;
+}
+
+/**
+ * Converts a pointer to its string representation.
+ *
+ * This function takes a pointer and returns a string representation
+ * of the pointer, formatted as "[pointer <address>]".
+ *
+ * @param ptr The pointer to convert to a string representation.
+ * @return A char pointer to the string representation of the pointer.
+ */
+static char *ptrtostr(void *ptr) {
+    char *str = apexMem_alloc(32);
+    snprintf(str, 32, "[pointer %p]", ptr);
+    return apexStr_save(str, 20)->value;
+}
 
 /**
  * Converts an ApexObject type to its string representation.
@@ -229,6 +285,9 @@ char *apexVal_tostr(ApexValue value) {
     case APEX_VAL_FN:
         return fntostr(value.fnval);
 
+    case APEX_VAL_CFN:
+        return cfntostr(value.cfnval);
+
     case APEX_VAL_ARR:
         return arrtostr(value.arrval);
 
@@ -237,6 +296,9 @@ char *apexVal_tostr(ApexValue value) {
 
     case APEX_VAL_TYPE:
         return typetostr(value.objval);
+
+    case APEX_VAL_PTR:
+        return ptrtostr(value.ptrval);
 
     case APEX_VAL_NULL:
         return apexStr_val("null", 4);
@@ -367,22 +429,23 @@ void apexVal_release(ApexValue value) {
     switch (value.type) {
     case APEX_VAL_ARR: {
         int refcount = --value.arrval->refcount;
-        if (refcount == 0) {
+        if (refcount <= 0) {
             apexVal_freearray(value.arrval);
         }
         break;
     }
     case APEX_VAL_FN: {
         int refcount = --value.fnval->refcount;
-        if (refcount == 0) {
+        if (refcount <= 0) {
             free(value.fnval->params);
             free(value.fnval);
         }
         break;
     }
+    case APEX_VAL_TYPE:
     case APEX_VAL_OBJ: {
         int refcount = --value.objval->refcount;
-        if (refcount == 0) {
+        if (refcount <= 0) {
             apexVal_freeobject(value.objval);
         }
         break;
@@ -417,20 +480,24 @@ Fn *apexVal_newfn(const char *name, const char **params, int param_n, int addr) 
 }
 
 /**
- * Initializes a new table with the given size.
+ * Initializes a new ApexCfn structure with the given name, argument count,
+ * and function pointer.
  *
- * @param table_type The type of the table to be initialized.
- * @param entry_type The type of the entries in the table.
- * @param init_size The initial size of the table.
+ * This function allocates a new ApexCfn structure and assigns it the given
+ * name, argument count, and function pointer.
+ *
+ * @param name The name of the new ApexCfn.
+ * @param argc The number of arguments expected by the new ApexCfn.
+ * @param fn The function pointer of the new ApexCfn.
+ * @return A pointer to the newly allocated ApexCfn.
  */
-#define INIT_TABLE(table_type, entry_type, init_size) do { \
-    table_type *table = apexMem_alloc(sizeof(table_type)); \
-    table->entries = apexMem_calloc(sizeof(entry_type), init_size); \
-    table->size = init_size; \
-    table->n = 0; \
-    table->refcount = 1; \
-    return table; \
-} while (0)
+ApexCfn apexVal_newcfn(char *name, int argc, int (*fn)(ApexVM *)) {
+    ApexCfn cfn;
+    cfn.name = name;
+    cfn.argc = argc;
+    cfn.fn = fn;
+    return cfn;
+}
 
 /**
  * Resizes the given table to twice its current size.
@@ -474,21 +541,34 @@ Fn *apexVal_newfn(const char *name, const char **params, int param_n, int addr) 
  * @return A pointer to the newly created array.
  */
 Array *apexVal_newarray(void) {
-    INIT_TABLE(Array, ArrayEntry, ARR_INIT_SIZE);
+    Array *array = apexMem_alloc(sizeof(Array));
+    array->entries = apexMem_calloc(sizeof(ArrayEntry), ARR_INIT_SIZE);
+    array->size = ARR_INIT_SIZE;
+    array->n = 0;
+    array->refcount = 0;
+    return array;
 }
 
+
 /**
- * Creates a new object with the given initial size.
+ * Creates a new object with the given name.
  *
- * This function allocates memory for an object and its entries,
- * and initializes the object with the initial size. The object's
- * reference count is set to 1, and the object is ready to be used
- * or assigned to a variable.
+ * This function allocates memory for a new ApexObject and initializes
+ * its fields. The object is given an initial size, and its reference
+ * count is set to one. The entries in the object are initialized based
+ * on the defined initial size.
  *
- * @return A pointer to the newly created object.
+ * @param name The name to assign to the new object.
+ * @return A pointer to the newly created ApexObject.
  */
-ApexObject *apexVal_newobject(void) {
-    INIT_TABLE(ApexObject, ApexObjectEntry, OBJ_INIT_SIZE);
+ApexObject *apexVal_newobject(const char *name) {
+    ApexObject *object = apexMem_alloc(sizeof(ApexObject));
+    object->entries = apexMem_calloc(sizeof(ApexObjectEntry), OBJ_INIT_SIZE);
+    object->size = OBJ_INIT_SIZE;
+    object->n = 0;
+    object->refcount = 0;
+    object->name = name;
+    return object;
 }
 
 /**
@@ -645,6 +725,35 @@ void apexVal_objectset(ApexObject *object, const char *key, ApexValue value) {
     if ((float)object->n / object->size > OBJ_LOAD_FACTOR) {
         object_resize(object);
     }
+}
+
+/**
+ * Creates a deep copy of an object.
+ *
+ * This function creates a new object with the same name as the given object.
+ * It iterates through all the entries in the given object and inserts or
+ * updates the corresponding key-value pair in the new object. If the value is
+ * of type object, it recursively calls apexVal_objectcpy to create a deep
+ * copy of the nested object. Finally, it returns the new object.
+ *
+ * @param object A pointer to the object to copy.
+ * @return A pointer to the new object created as a deep copy of the given
+ *         object.
+ */
+ApexObject *apexVal_objectcpy(ApexObject *object) {
+    ApexObject *newobj = apexVal_newobject(object->name);
+    for (int i = 0; i < object->size; i++) {
+        ApexObjectEntry *entry = object->entries[i];
+        if (entry) {
+            ApexValue value = entry->value;
+            if (value.type == APEX_VAL_OBJ) {
+                ApexObject *objcpy = apexVal_objectcpy(entry->value.objval);
+                value = apexVal_makeobj(objcpy);
+            }
+            apexVal_objectset(newobj, entry->key, value);
+        }
+    }
+    return newobj;
 }
 
 /**
@@ -875,6 +984,42 @@ ApexValue apexVal_makeobj(ApexObject *obj) {
 }
 
 /**
+ * Creates an ApexValue representing a foreign function.
+ *
+ * This function allocates a new ApexValue with the given foreign function
+ * and type APEX_VAL_CFN. The foreign function is stored in the ApexValue's
+ * cfnval field.
+ *
+ * @param cfn The foreign function to associate with the ApexValue.
+ *
+ * @return An ApexValue with the given foreign function.
+ */
+ApexValue apexVal_makecfn(ApexCfn cfn) {
+    ApexValue v;
+    v.type = APEX_VAL_CFN;
+    v.cfnval = cfn;
+    return v;
+}
+
+/**
+ * Creates an ApexValue representing a pointer.
+ *
+ * This function allocates a new ApexValue with the given pointer
+ * and type APEX_VAL_PTR. The pointer is stored in the ApexValue's
+ * ptrval field.
+ *
+ * @param ptr The pointer to associate with the ApexValue.
+ *
+ * @return An ApexValue with the given pointer.
+ */
+ApexValue apexVal_makeptr(void *ptr) {
+    ApexValue v;
+    v.type = APEX_VAL_PTR;
+    v.ptrval = ptr;
+    return v;
+}
+
+/**
  * Creates an ApexValue with the given null value.
  *
  * This function allocates a new ApexValue with the type APEX_VAL_NULL.
@@ -942,6 +1087,8 @@ bool apexVal_tobool(ApexValue value) {
     case APEX_VAL_ARR:
     case APEX_VAL_TYPE:
     case APEX_VAL_OBJ:
+    case APEX_VAL_CFN:
+    case APEX_VAL_PTR:
         value = apexVal_makebool(true);
         break;
 

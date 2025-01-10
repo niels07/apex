@@ -9,7 +9,7 @@
 #include "lib.h"
 
 
-void std_int(ApexVM *vm) {
+int std_int(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_BOOL:
@@ -33,25 +33,27 @@ void std_int(ApexVM *vm) {
         if (apexUtl_stoi(&i, apexVal_str(value)->value)) {
             apexVM_pushint(vm, i);
         } else {
-            exit(EXIT_FAILURE);
-            apexErr_type(vm, "cannot convert string \"%s\" to int", apexVal_str(value)->value);
+            apexErr_runtime(vm, "cannot convert string \"%s\" to int", apexVal_str(value)->value);
+            return 1;
         }
         break;
     }
 
     default:
-        apexErr_type(vm, "cannot convert %s to int", apexVal_typestr(value));
-        break;
+        apexErr_runtime(vm, "cannot convert %s to int", apexVal_typestr(value));
+        return 1;
     }
+    return 0;
 }
 
-void std_str(ApexVM *vm) {
+int std_str(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
     char *str = apexVal_tostr(value);
     apexVM_pushstr(vm, str);
+    return 0;
 }
 
-void std_flt(ApexVM *vm) {
+int std_flt(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_INT:
@@ -68,7 +70,8 @@ void std_flt(ApexVM *vm) {
         if (apexUtl_stof(&f, apexVal_str(value)->value)) {
             apexVM_pushflt(vm, f);
         } else {
-            apexErr_type(vm, "cannot convert string \"%s\" to flt", apexVal_str(value)->value);
+            apexErr_runtime(vm, "cannot convert string \"%s\" to flt", apexVal_str(value)->value);
+            return 1;
         }
         break;
     }
@@ -77,12 +80,13 @@ void std_flt(ApexVM *vm) {
         break;
 
     default:
-        apexErr_type(vm, "cannot convert %s to flt", apexVal_typestr(value));
-        break;
+        apexErr_runtime(vm, "cannot convert %s to flt", apexVal_typestr(value));
+        return 1;
     }
+    return 0;
 }
 
-void std_dbl(ApexVM *vm) {
+int std_dbl(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_INT:
@@ -99,7 +103,8 @@ void std_dbl(ApexVM *vm) {
         if (apexUtl_stod(&d, apexVal_str(value)->value)) {
             apexVM_pushdbl(vm, d);
         } else {
-            apexErr_type(vm, "cannot convert string \"%s\" to dbl", apexVal_str(value)->value);
+            apexErr_runtime(vm, "cannot convert string \"%s\" to dbl", apexVal_str(value)->value);
+            return 1;
         }
         break;
     }
@@ -107,11 +112,13 @@ void std_dbl(ApexVM *vm) {
         apexVM_pushdbl(vm, apexVal_bool(value));
         break;
     default:
-        apexErr_type(vm, "cannot convert %s to dbl", apexVal_typestr(value));
+        apexErr_runtime(vm, "cannot convert %s to dbl", apexVal_typestr(value));
+        return 1;
     }
+    return 0;
 }
 
-void std_bool(ApexVM *vm) {
+int std_bool(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_INT:
@@ -133,9 +140,10 @@ void std_bool(ApexVM *vm) {
         apexVM_pushbool(vm, false);
         break;
     }
+    return 0;
 }
 
-static void std_len(ApexVM *vm) {
+static int std_len(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_ARR:
@@ -147,16 +155,17 @@ static void std_len(ApexVM *vm) {
         break;
 
     default:
-        apexErr_type(vm, "cannot get length of %s", apexVal_typestr(value));
-        break;
+        apexErr_runtime(vm, "cannot get length of %s", apexVal_typestr(value));
+        return 1;
     }
+    return 0;
 }
 
 apex_reglib(std, 
-    apex_regfn("int", std_int),
-    apex_regfn("str", std_str),
-    apex_regfn("flt", std_flt),
-    apex_regfn("dbl", std_dbl),
-    apex_regfn("bool", std_bool),
-    apex_regfn("len", std_len)
+    apex_regfn("int", std_int, 1),
+    apex_regfn("str", std_str, 1),
+    apex_regfn("flt", std_flt, 1),
+    apex_regfn("dbl", std_dbl, 1),
+    apex_regfn("bool", std_bool, 1),
+    apex_regfn("len", std_len, 1)
 );

@@ -11,7 +11,7 @@
 #include "lib.h"
 #include "util.h"
 #include "mem.h"
-#include "string.h"
+#include "apexStr.h"
 
 #define LIB_TABLE_SIZE 1024
 
@@ -24,6 +24,14 @@ typedef struct LibEntry {
 LibEntry *lib_table[LIB_TABLE_SIZE];
 
 #define LIB_PATHS_MAX 16
+
+#ifdef WIN32
+static HMODULE lib_handles[256];
+#else
+static void *lib_handles[256];
+#endif
+
+static int lib_handle_count = 0;
 
 static const char *LIB_PATHS[] = {
     "./",
@@ -82,7 +90,7 @@ ApexLibFn apexLib_get(const char *libname, const char *fnname) {
         }
         entry = entry->next;
     }
-    return NULL;
+    return (ApexLibFn){NULL, NULL, 0};
 }
 
 static void load_shared_library(const char *libpath, const char *libname) {
@@ -104,6 +112,7 @@ static void load_shared_library(const char *libpath, const char *libname) {
         return;
     }
 
+    lib_handles[lib_handle_count++] = handle;
     // Call the registration function
     ((void (*)(void))register_fn)();
 #else
@@ -121,7 +130,7 @@ static void load_shared_library(const char *libpath, const char *libname) {
         dlclose(handle);
         return;
     }
-
+    lib_handles[lib_handle_count++] = handle;
     // Call the registration function
     register_fn();
 #endif
@@ -173,9 +182,28 @@ void apexLib_init(void) {
     const char *paths[LIB_PATHS_MAX];
     get_search_paths(paths);
 
-    for (int i = 0; paths[i] != NULL; i++) {
+    for (int i = 0; paths[i]; i++) {
         load_path_libs(paths[i]);
     }
     errno = 0;
+}
+
+void apexLib_free(void) {
+    for (int i = 0; i < LIB_TABLE_SIZE; i++) {
+        LibEntry *entry = lib_table[i];
+        while (entry) {
+            LibEntry *next = entry->next;
+            free(entry);
+            entry = next;
+        }
+        lib_table[i] = NULL;
+    }
+    for (int i = 0; i < lib_handle_count; i++) {
+#ifdef WIN32
+        FreeLibrary(lib_handles[i]);
+#else
+        dlclose(lib_handles[i]);
+#endif
+    }
 }
 

@@ -72,8 +72,8 @@ void print_ast(AST *node, int indent) {
         printf(", Value: \"%s\"", node->value.strval->value);
     }
 
-    if (node->srcloc.lineno > 0) {
-        printf(", Line: %d", node->srcloc.lineno);
+    if (node->parsestate.lineno > 0) {
+        printf(", Line: %d", node->parsestate.lineno);
     }
     printf("\n");
 
@@ -112,18 +112,41 @@ void print_ast(AST *node, int indent) {
  * @param left The left child of the new node.
  * @param right The right child of the new node.
  * @param value The value associated with the new node.
- * @param srcloc The source location of the new node.
+ * @param parsestate The source location of the new node.
  *
  * @return A pointer to the newly allocated abstract syntax tree node.
  */
-AST *create_ast_node(ASTNodeType type, AST *left, AST *right, ASTValue value, bool val_is_ast, SrcLoc srcloc) {
+AST *create_ast_node(ASTNodeType type, AST *left, AST *right, ASTValue value, bool val_is_ast, ParseState parsestate) {
     AST *node = apexMem_alloc(sizeof(AST));
     node->type = type;
     node->left = left;
     node->right = right;
     node->value = value;
     node->val_is_ast = val_is_ast;
-    node->srcloc = srcloc;
+    node->parsestate = parsestate;
+    return node;
+}
+
+/**
+ * Creates an error abstract syntax tree node.
+ *
+ * This function allocates memory for an AST node and initializes it
+ * as an error node with the given source location. The node has no
+ * children and has a default value of zero.
+ *
+ * @param parsestate The source location to associate with the error node.
+ * @return A pointer to the newly allocated error AST node.
+ */
+
+AST *create_error_ast(void) {
+    AST *node = apexMem_alloc(sizeof(AST));
+    node->type = AST_ERROR;
+    node->left = NULL;
+    node->right = NULL;
+    node->parsestate.filename = NULL;
+    node->parsestate.lineno = 0;
+    node->val_is_ast = false;
+    node->value = ast_value_zero();
     return node;
 }
 

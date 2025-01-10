@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include "symbol.h"
 #include "mem.h"
-#include "string.h"
+#include "apexStr.h"
 #include "value.h"
 
 /**
@@ -140,7 +140,6 @@ SymbolAddr add_symbol_with_value(SymbolTable *table, const char *name, ApexValue
 void apexSym_setglobal(SymbolTable *table, const char *name, ApexValue value) {
     unsigned int hash = hash_string(name) % table->size;
     Symbol *current = table->symbols[hash];
-
     while (current) {
         if (current->name == name) {
             ApexValue oldval = current->value;
