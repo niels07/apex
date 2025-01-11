@@ -1,7 +1,7 @@
 #ifndef APEX_STD_H
 #define APEX_STD_H
 
-#include "vm.h"
+#include "apexVM.h"
 
 extern void std_int(ApexVM *vm);
 extern void std_str(ApexVM *vm);

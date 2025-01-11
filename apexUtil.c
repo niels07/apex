@@ -7,7 +7,7 @@
 #include <math.h>
 #include <stdarg.h>
 #include <stdbool.h>
-#include "mem.h"
+#include "apexMem.h"
 #include "apexStr.h"
 
 /**
@@ -21,7 +21,7 @@
  * @param str The input string to be hashed.
  * @return An unsigned integer representing the hash value of the input string.
  */
-unsigned int apexUtl_hash(const char *str) {
+unsigned int apexUtil_hash(const char *str) {
     unsigned int hash = 0;
     while (*str) {
         hash = (hash << 5) + hash + (unsigned char)(*str);
@@ -44,7 +44,7 @@ unsigned int apexUtl_hash(const char *str) {
  * @param str The input string to be converted to an int.
  * @return true if the conversion is successful, false otherwise.
  */
-bool apexUtl_stoi(int *out, const char *str) {
+bool apexUtil_stoi(int *out, const char *str) {
      if (!str || !*str) {
         return false;
     }
@@ -86,7 +86,7 @@ bool apexUtl_stoi(int *out, const char *str) {
  * @param str The input string to be converted to a float.
  * @return true if the conversion is successful, false otherwise.
  */
-bool apexUtl_stof(float *out, const char *str) {
+bool apexUtil_stof(float *out, const char *str) {
     if (!str || !*str) {
         return false;
     }
@@ -123,7 +123,7 @@ bool apexUtl_stof(float *out, const char *str) {
  * @param str The input string to be converted to a double.
  * @return true if the conversion is successful, false otherwise.
  */
-bool apexUtl_stod(double *out, const char *str) {
+bool apexUtil_stod(double *out, const char *str) {
     if (!str || !*str) {
         return false;
     }
@@ -160,7 +160,7 @@ bool apexUtl_stod(double *out, const char *str) {
  * @return A pointer to the line of text that was read, or NULL if end of
  *         file was encountered without reading any characters.
  */
-ApexString *apexUtl_readline(FILE *stream) {
+ApexString *apexUtil_readline(FILE *stream) {
     size_t size = 128;
     size_t len = 0;
     char *buffer = apexMem_alloc(size);

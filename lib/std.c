@@ -2,12 +2,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "vm.h"
+#include "apexVM.h"
 #include "apexVal.h"
-#include "util.h"
-#include "error.h"
-#include "lib.h"
-
+#include "apexUtil.h"
+#include "apexErr.h"
+#include "apexLib.h"
 
 int std_int(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
@@ -30,7 +29,7 @@ int std_int(ApexVM *vm) {
 
     case APEX_VAL_STR: {
         int i;
-        if (apexUtl_stoi(&i, apexVal_str(value)->value)) {
+        if (apexUtil_stoi(&i, apexVal_str(value)->value)) {
             apexVM_pushint(vm, i);
         } else {
             apexErr_runtime(vm, "cannot convert string \"%s\" to int", apexVal_str(value)->value);
@@ -67,7 +66,7 @@ int std_flt(ApexVM *vm) {
         break;
     case APEX_VAL_STR: {
         float f;
-        if (apexUtl_stof(&f, apexVal_str(value)->value)) {
+        if (apexUtil_stof(&f, apexVal_str(value)->value)) {
             apexVM_pushflt(vm, f);
         } else {
             apexErr_runtime(vm, "cannot convert string \"%s\" to flt", apexVal_str(value)->value);
@@ -100,7 +99,7 @@ int std_dbl(ApexVM *vm) {
         break;
     case APEX_VAL_STR: {
         double d;
-        if (apexUtl_stod(&d, apexVal_str(value)->value)) {
+        if (apexUtil_stod(&d, apexVal_str(value)->value)) {
             apexVM_pushdbl(vm, d);
         } else {
             apexErr_runtime(vm, "cannot convert string \"%s\" to dbl", apexVal_str(value)->value);

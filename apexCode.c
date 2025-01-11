@@ -2,24 +2,24 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include "compiler.h"
-#include "vm.h"
+#include "apexCode.h"
+#include "apexVM.h"
 #include "apexVal.h"
-#include "error.h"
-#include "symbol.h"
-#include "mem.h"
+#include "apexErr.h"
+#include "apexSym.h"
+#include "apexMem.h"
 #include "apexStr.h"
-#include "stdlib.h"
-#include "lexer.h"
-#include "parser.h"
-#include "util.h"
+#include "apexLib.h"
+#include "apexLex.h"
+#include "apexParse.h"
+#include "apexUtil.h"
 
 #define EMIT_OP_INT(vm, opcode, value) emit_instruction(vm, opcode, apexVal_makeint(value))
 #define EMIT_OP_DBL(vm, opcode, value) emit_instruction(vm, opcode, apexVal_makedbl(value))
 #define EMIT_OP_STR(vm, opcode, value) emit_instruction(vm, opcode, apexVal_makestr(value))
 #define EMIT_OP_BOOL(vm, opcode, value) emit_instruction(vm, opcode, apexVal_makebool(value))
 #define EMIT_OP(vm, opcode) emit_instruction(vm, opcode, zero_value())
-#define UPDATE_PARSESTATE(vm, node) vm->parsestate = node->parsestate
+#define UPDATE_SRCLOC(vm, node) vm->srcloc = node->srcloc
 
 static bool compile_expression(ApexVM *vm, AST *node, bool use_result);
 static bool compile_statement(ApexVM *vm, AST *node);
@@ -31,7 +31,7 @@ static bool compile_object_literal(ApexVM *vm, AST *node);
  * instruction.
  */
 static void ensure_capacity(ApexVM *vm) {
-    if (vm->chunk->ins_n + 1 >= vm->chunk->ins_size) {
+    if (vm->chunk->ins_count + 1 >= vm->chunk->ins_size) {
         vm->chunk->ins_size = vm->chunk->ins_size * 2;
         vm->chunk->ins = apexMem_realloc(
             vm->chunk->ins, 
@@ -69,12 +69,11 @@ static ApexValue zero_value(void) {
  */
 static void emit_instruction(ApexVM *vm, OpCode opcode, ApexValue value) {
     ensure_capacity(vm);
-    vm->chunk->ins[vm->chunk->ins_n].parsestate = vm->parsestate;
-    vm->chunk->ins[vm->chunk->ins_n].value = value;
-    vm->chunk->ins[vm->chunk->ins_n].opcode = opcode;
-    vm->chunk->ins_n++;
+    vm->chunk->ins[vm->chunk->ins_count].srcloc = vm->srcloc;
+    vm->chunk->ins[vm->chunk->ins_count].value = value;
+    vm->chunk->ins[vm->chunk->ins_count].opcode = opcode;
+    vm->chunk->ins_count++;
 }
-
 
 /**
  * Compiles an AST node representing a variable to bytecode.
@@ -116,7 +115,6 @@ static void compile_variable(ApexVM *vm, AST *node, bool is_assignment) {
     }
 }
 
-
 /**
  * Compiles a parameter list from an AST node to an array of strings.
  *
@@ -151,7 +149,7 @@ static const char **compile_parameter_list(AST *param_list, int *argc) {
             AST *parameter = param_list->left;
             const char *param_name = parameter->value.strval->value;
             if (parameter->type != AST_VAR) {
-                apexErr_syntax(parameter->parsestate, "expected parameter to be a variable");
+                apexErr_syntax(parameter->srcloc, "expected parameter to be a variable");
                 return NULL;
             }
             if (pcount >= psize) {
@@ -168,7 +166,7 @@ static const char **compile_parameter_list(AST *param_list, int *argc) {
                 break;
             }
         } else {
-            apexErr_syntax(param_list->parsestate,"Invalid AST node in parameter list");
+            apexErr_syntax(param_list->srcloc,"Invalid AST node in parameter list");
             return NULL;
         }
     }
@@ -192,8 +190,8 @@ static const char **compile_parameter_list(AST *param_list, int *argc) {
  * @return true if the array was compiled successfully, false otherwise.
  */
 static bool compile_array(ApexVM *vm, AST *node) {
-    int n = 0;
-    UPDATE_PARSESTATE(vm, node);
+    int count = 0;
+    UPDATE_SRCLOC(vm, node);
 
     AST *current = node->right;
     while (current) {
@@ -202,19 +200,19 @@ static bool compile_array(ApexVM *vm, AST *node) {
                 !compile_expression(vm, current->right, true)) { // value
                 return false;
             }
-            n++;
+            count++;
         } else if (!current->right || current->right->type != AST_KEY_VALUE_PAIR) {
-            EMIT_OP_INT(vm, OP_PUSH_INT, n); 
+            EMIT_OP_INT(vm, OP_PUSH_INT, count); 
             if (!compile_expression(vm, current, true)) { // array element
                 return false;
             }
-            n++;
+            count++;
         }
         
         current = current->right->right;
     }
 
-    EMIT_OP_INT(vm, OP_CREATE_ARRAY, n);
+    EMIT_OP_INT(vm, OP_CREATE_ARRAY, count);
     return true;
 }
 
@@ -236,7 +234,7 @@ static bool compile_array(ApexVM *vm, AST *node) {
  * @return A boolean indicating whether the compilation was successful.
  */
 static bool compile_array_access(ApexVM *vm, AST *node, bool is_assignment) {
-    UPDATE_PARSESTATE(vm, node);
+    UPDATE_SRCLOC(vm, node);
 
     if (!compile_expression(vm, node->left, true) || // array
         !compile_expression(vm, node->right, true)) { // index
@@ -312,14 +310,14 @@ static bool compile_function_declaration(ApexVM *vm, AST *node) {
         if (!params) {
             return false;
         }
-        Fn *fn = apexVal_newfn(fnname, params, argc, vm->chunk->ins_n);
+        ApexFn *fn = apexVal_newfn(fnname, params, argc, vm->chunk->ins_count);
         ApexValue value;
         if (!apexSym_getglobal(&value, &vm->global_table, objname)) {
-            apexErr_syntax(node->parsestate, "object %s not found", objname);
+            apexErr_syntax(node->srcloc, "object %s not found", objname);
             return false;
         }
         if (value.type != APEX_VAL_TYPE) {
-            apexErr_syntax(node->parsestate, "%s is not an object", objname);
+            apexErr_syntax(node->srcloc, "%s is not an object", objname);
             return false;
         }
         ApexObject *obj = value.objval;
@@ -341,11 +339,11 @@ static bool compile_function_declaration(ApexVM *vm, AST *node) {
         if (!params) {
             return false;
         }
-        Fn *fn = apexMem_alloc(sizeof(Fn));
+        ApexFn *fn = apexMem_alloc(sizeof(ApexFn));
         fn->name = fnname;
         fn->argc = argc;
         fn->params = params;
-        fn->addr = vm->chunk->ins_n;
+        fn->addr = vm->chunk->ins_count;
         fn->refcount = 0;
         apexSym_setglobal(&vm->global_table, fnname, apexVal_makefn(fn));
         if (!compile_statement(vm, node->right)) { // function body
@@ -377,7 +375,7 @@ static bool compile_function_declaration(ApexVM *vm, AST *node) {
 static bool compile_function_call(ApexVM *vm, AST *node) {
     ApexString *fn_name = node->left->value.strval;
     int argc = 0;
-    UPDATE_PARSESTATE(vm, node);
+    UPDATE_SRCLOC(vm, node);
     if (!compile_argument_list(vm, node->right, &argc)) {
         return false;
     }
@@ -385,7 +383,6 @@ static bool compile_function_call(ApexVM *vm, AST *node) {
     EMIT_OP_INT(vm, OP_CALL, argc);
     return true;
 }
-
 
 /**
  * Compiles an AST node representing a library function call to bytecode.
@@ -426,7 +423,49 @@ static bool compile_library_call(ApexVM *vm, AST *node) {
  * @param node The AST node representing the assignment expression to be compiled.
  */
 static bool compile_assignment(ApexVM *vm, AST *node) {
-    UPDATE_PARSESTATE(vm, node);
+    UPDATE_SRCLOC(vm, node);
+
+    if (node->type == AST_ASSIGN_ADD ||
+        node->type == AST_ASSIGN_SUB ||
+        node->type == AST_ASSIGN_MUL ||
+        node->type == AST_ASSIGN_DIV ||
+        node->type == AST_ASSIGN_MOD) {
+        if (node->left->type == AST_ARRAY_ACCESS) {
+            if (!compile_array_access(vm, node->left, false)) {
+                return false;
+            }
+        } else if (node->left->type == AST_MEMBER_ACCESS) {
+            if (!compile_member_access(vm, node->left, false)) {
+                return false;
+            }
+        } else {
+            compile_variable(vm, node->left, false);            
+        }
+        if (!compile_expression(vm, node->right, true)) {
+            return false;
+        }
+        switch (node->type) {
+        case AST_ASSIGN_ADD:
+            EMIT_OP(vm, OP_ADD);
+            break;
+        case AST_ASSIGN_SUB:
+            EMIT_OP(vm, OP_SUB);
+            break;
+        case AST_ASSIGN_MUL:
+            EMIT_OP(vm, OP_MUL);
+            break;
+        case AST_ASSIGN_DIV:
+            EMIT_OP(vm, OP_DIV);
+            break;
+        case AST_ASSIGN_MOD:
+            EMIT_OP(vm, OP_MOD);
+            break;
+        default:
+            break;
+        }
+        compile_variable(vm, node->left, true);
+        return true;
+    }
 
     if (node->left->type == AST_ARRAY_ACCESS) { 
         return compile_expression(vm, node->right, true) &&      
@@ -468,21 +507,21 @@ static bool compile_assignment(ApexVM *vm, AST *node) {
 static bool compile_unary_expr(ApexVM *vm, AST *node, bool result_used) {
     bool is_postfix;
     
-    if (node->value.strval == apexStr_new("!", 1)) {
+    if (node->type == AST_UNARY_NOT) {
         if (!compile_expression(vm, node->right, true)) {
             return false;
         }
         EMIT_OP(vm, OP_NOT);
         return true;
     } 
-    if (node->value.strval == apexStr_new("-", 1)) {
+    if (node->type == AST_UNARY_SUB) {
         if (!compile_expression(vm, node->right, true)) {
             return false;
         }
         EMIT_OP(vm, OP_NEGATE);
         return true;
     } 
-    if (node->value.strval == apexStr_new("+", 1)) {
+    if (node->type == AST_UNARY_ADD) {
         if (!compile_expression(vm, node->right, true)) {
             return false;
         }
@@ -492,14 +531,14 @@ static bool compile_unary_expr(ApexVM *vm, AST *node, bool result_used) {
     is_postfix = (node->right == NULL);
     if ((is_postfix && node->left->type == AST_ARRAY_ACCESS) || 
         (!is_postfix && node->right->type == AST_ARRAY_ACCESS)) {
-        UPDATE_PARSESTATE(vm, node);
+        UPDATE_SRCLOC(vm, node);
         AST *array_node = is_postfix ? node->left : node->right;
         if (!compile_expression(vm, array_node->left, true) || // array
             !compile_expression(vm, array_node->right, true)) { // index
             return false;
         }
     }
-    if (node->value.strval == apexStr_new("++", 2)) {
+    if (node->type == AST_UNARY_INC) {
         if (vm->in_function) {          
             if (is_postfix) {
                 EMIT_OP_STR(vm, OP_POST_INC_LOCAL, node->left->value.strval);
@@ -513,7 +552,7 @@ static bool compile_unary_expr(ApexVM *vm, AST *node, bool result_used) {
                 EMIT_OP_STR(vm, OP_PRE_INC_GLOBAL, node->right->value.strval);
             }
         }
-    } else if (node->value.strval == apexStr_new("--", 2)) {
+    } else if (node->type == AST_UNARY_DEC) {
         if (vm->in_function) {   
             if (is_postfix) {
                 EMIT_OP_STR(vm, OP_POST_DEC_LOCAL, node->left->value.strval);
@@ -534,6 +573,64 @@ static bool compile_unary_expr(ApexVM *vm, AST *node, bool result_used) {
     return true;
 }
 
+/**
+ * Compiles an AST node representing a binary expression to bytecode.
+ *
+ * This function compiles the left and right subexpressions of the node, and
+ * emits an instruction to perform the binary operation specified by the
+ * node's type.
+ *
+ * @param vm A pointer to the virtual machine structure containing the
+ *           instruction chunk.
+ * @param node The AST node representing the binary expression to be
+ *             compiled.
+ * @return true if the binary expression was compiled successfully, false
+ *         otherwise.
+ */
+static bool compile_binary_expr(ApexVM *vm, AST *node) {
+    if (!compile_expression(vm, node->left, true) || 
+        !compile_expression(vm, node->right, true)) {
+        return false;
+    }        
+    switch (node->type) {
+    case AST_BIN_ADD:
+        EMIT_OP(vm, OP_ADD);
+        break;
+    case AST_BIN_SUB: 
+        EMIT_OP(vm, OP_SUB);
+        break;
+    case AST_BIN_MUL:
+        EMIT_OP(vm, OP_MUL);
+        break;
+    case AST_BIN_DIV:
+        EMIT_OP(vm, OP_DIV);
+        break;
+    case AST_BIN_MOD:
+        EMIT_OP(vm, OP_MOD);
+        break;
+    case AST_BIN_EQ:
+        EMIT_OP(vm, OP_EQ);
+        break;
+    case AST_BIN_NE:
+        EMIT_OP(vm, OP_NE);
+        break;
+    case AST_BIN_LT:
+        EMIT_OP(vm, OP_LT);
+        break;
+    case AST_BIN_LE:
+        EMIT_OP(vm, OP_LE);
+        break;
+    case AST_BIN_GT:
+        EMIT_OP(vm, OP_GT);
+        break;
+    case AST_BIN_GE:
+        EMIT_OP(vm, OP_GE);
+        break;
+    default:
+        break;
+    }
+    return true;
+}
 
 /**
  * Compiles an AST node representing the `new` operator to bytecode.
@@ -549,7 +646,7 @@ static bool compile_unary_expr(ApexVM *vm, AST *node, bool result_used) {
  *         otherwise.
  */
 static bool compile_new(ApexVM *vm, AST *node) {
-    UPDATE_PARSESTATE(vm, node);
+    UPDATE_SRCLOC(vm, node);
     int argc = 0;
 
     if (!compile_argument_list(vm, node->right, &argc)) {
@@ -563,7 +660,6 @@ static bool compile_new(ApexVM *vm, AST *node) {
     EMIT_OP_INT(vm, OP_NEW, argc);
     return true;
 }
-
 
 /**
  * Compiles an AST node representing a member access to bytecode.
@@ -583,7 +679,7 @@ static bool compile_new(ApexVM *vm, AST *node) {
  *         otherwise.
  */
 static bool compile_member_access(ApexVM *vm, AST *node, bool is_assignment) {
-    UPDATE_PARSESTATE(vm, node);
+    UPDATE_SRCLOC(vm, node);
 
     // Compile the base object(e.g., 'obj' in 'obj.member')
     if (!compile_expression(vm, node->left, true)) {
@@ -598,7 +694,6 @@ static bool compile_member_access(ApexVM *vm, AST *node, bool is_assignment) {
     }
     return true;
 }
-
 
 /**
  * Compiles an AST node representing a member function call to bytecode.
@@ -615,7 +710,7 @@ static bool compile_member_access(ApexVM *vm, AST *node, bool is_assignment) {
  *         otherwise.
  */
 static bool compile_member_function_call(ApexVM *vm, AST *node) {
-    UPDATE_PARSESTATE(vm, node);
+    UPDATE_SRCLOC(vm, node);
     int argc = 0;
 
     // Compile the base object (e.g., 'obj' in 'obj.method()')
@@ -644,8 +739,8 @@ static bool compile_member_function_call(ApexVM *vm, AST *node) {
  * @param node The AST node representing the object literal to be compiled.
  */
 static bool compile_object_literal(ApexVM *vm, AST *node) {
-    int n = 0;
-    UPDATE_PARSESTATE(vm, node);
+    int count = 0;
+    UPDATE_SRCLOC(vm, node);
 
     ApexString *name = node->value.strval;
     AST *current = node->right;
@@ -655,7 +750,7 @@ static bool compile_object_literal(ApexVM *vm, AST *node) {
                 !compile_expression(vm, current->right, true)) { // Value
                 return false;
             }
-            n++;
+            count++;
         }
         current = current->right;
     }
@@ -664,7 +759,7 @@ static bool compile_object_literal(ApexVM *vm, AST *node) {
     apexSym_setglobal(&vm->global_table, name->value, apexVal_maketype(obj));
     
     EMIT_OP_STR(vm, OP_PUSH_STR, name);
-    EMIT_OP_INT(vm, OP_CREATE_OBJECT, n);
+    EMIT_OP_INT(vm, OP_CREATE_OBJECT, count);
     return true;
 }
 
@@ -681,7 +776,7 @@ static bool compile_object_literal(ApexVM *vm, AST *node) {
  * @param node The AST node representing the expression to be compiled.
  */
 static bool compile_expression(ApexVM *vm, AST *node, bool result_used) {
-    UPDATE_PARSESTATE(vm, node);
+    UPDATE_SRCLOC(vm, node);
     switch (node->type) {
     case AST_INT:
         EMIT_OP_INT(vm, OP_PUSH_INT, atoi(node->value.strval->value));
@@ -705,35 +800,24 @@ static bool compile_expression(ApexVM *vm, AST *node, bool result_used) {
             node->value.strval == apexStr_new("true", 4) ? true : false);
         break;
     
-    case AST_BINARY_EXPR:
-        if (!compile_expression(vm, node->left, true) || 
-            !compile_expression(vm, node->right, true)) {
-            return false;
-        }        
-        if (node->value.strval == apexStr_new("+", 1)) {
-            EMIT_OP(vm, OP_ADD);
-        } else if (node->value.strval == apexStr_new("-", 1)) {
-            EMIT_OP(vm, OP_SUB);
-        } else if (node->value.strval == apexStr_new("*", 1)) {
-            EMIT_OP(vm, OP_MUL);
-        } else if (node->value.strval == apexStr_new("/", 1)) {
-            EMIT_OP(vm, OP_DIV);
-        } else if (node->value.strval == apexStr_new("==", 2)) {
-            EMIT_OP(vm, OP_EQ);
-        } else if (node->value.strval == apexStr_new("!=", 2)) {
-            EMIT_OP(vm, OP_NE);
-        } else if (node->value.strval == apexStr_new("<", 1)) {
-            EMIT_OP(vm, OP_LT);
-        } else if (node->value.strval == apexStr_new("<=", 2)) {
-            EMIT_OP(vm, OP_LE);
-        } else if (node->value.strval == apexStr_new(">", 1)) {
-            EMIT_OP(vm, OP_GT);
-        } else if (node->value.strval == apexStr_new(">=", 2)) {
-            EMIT_OP(vm, OP_GE);
-        }
-        break;
+    case AST_BIN_ADD:
+    case AST_BIN_SUB:
+    case AST_BIN_MUL:
+    case AST_BIN_DIV:
+    case AST_BIN_MOD:
+    case AST_BIN_EQ:
+    case AST_BIN_NE:
+    case AST_BIN_LT:
+    case AST_BIN_LE:
+    case AST_BIN_GT:
+    case AST_BIN_GE:
+        return compile_binary_expr(vm, node);
 
-    case AST_UNARY_EXPR:
+    case AST_UNARY_ADD:
+    case AST_UNARY_SUB:
+    case AST_UNARY_NOT:
+    case AST_UNARY_INC:
+    case AST_UNARY_DEC:
         return compile_unary_expr(vm, node, result_used);
 
     case AST_LOGICAL_EXPR: {
@@ -745,22 +829,22 @@ static bool compile_expression(ApexVM *vm, AST *node, bool result_used) {
 
         if (node->value.strval == apexStr_new("&&", 2)) {
             EMIT_OP(vm, OP_JUMP_IF_FALSE);
-            short_circuit_jmp = vm->chunk->ins_n - 1;
+            short_circuit_jmp = vm->chunk->ins_count - 1;
             if (!compile_expression(vm, node->right, true)) {
                 return false;
             }
             EMIT_OP(vm, OP_JUMP);
-            end_jmp = vm->chunk->ins_n - 1;
-            vm->chunk->ins[short_circuit_jmp].value.intval = vm->chunk->ins_n - short_circuit_jmp - 1;
+            end_jmp = vm->chunk->ins_count - 1;
+            vm->chunk->ins[short_circuit_jmp].value.intval = vm->chunk->ins_count - short_circuit_jmp - 1;
             EMIT_OP_BOOL(vm, OP_PUSH_BOOL, false);
-            vm->chunk->ins[end_jmp].value.intval = vm->chunk->ins_n - end_jmp - 1;
+            vm->chunk->ins[end_jmp].value.intval = vm->chunk->ins_count - end_jmp - 1;
         } else if (node->value.strval == apexStr_new("||", 2)) {
             EMIT_OP(vm, OP_JUMP_IF_FALSE);
-            short_circuit_jmp = vm->chunk->ins_n - 1;
+            short_circuit_jmp = vm->chunk->ins_count - 1;
             if (!compile_expression(vm, node->right, true)) {
                 return false;
             }
-            vm->chunk->ins[short_circuit_jmp].value.intval = vm->chunk->ins_n - short_circuit_jmp - 1;
+            vm->chunk->ins[short_circuit_jmp].value.intval = vm->chunk->ins_count - short_circuit_jmp - 1;
             EMIT_OP_BOOL(vm, OP_PUSH_BOOL, true);
         }
         break;
@@ -780,6 +864,11 @@ static bool compile_expression(ApexVM *vm, AST *node, bool result_used) {
         return compile_array_access(vm, node, false);
 
     case AST_ASSIGNMENT:
+    case AST_ASSIGN_ADD:
+    case AST_ASSIGN_SUB:
+    case AST_ASSIGN_MUL:
+    case AST_ASSIGN_DIV:
+    case AST_ASSIGN_MOD:        
         return compile_assignment(vm, node);
 
     case AST_FN_CALL: 
@@ -804,7 +893,7 @@ static bool compile_expression(ApexVM *vm, AST *node, bool result_used) {
         return compile_member_access(vm, node, false);
 
     default:
-        apexErr_syntax(node->parsestate, "Unhandled AST node type: %d", node->type);
+        apexErr_syntax(node->srcloc, "Unhandled AST node type: %d", node->type);
         return false;
     }
     return true;
@@ -824,7 +913,7 @@ static bool compile_expression(ApexVM *vm, AST *node, bool result_used) {
  */
 static bool compile_include(ApexVM *vm, AST *node) {
     const char *incpath = node->value.strval->value;
-    const char *filepath = node->parsestate.filename;
+    const char *filepath = node->srcloc.filename;
     FILE *file;
     Lexer lexer;
     Parser parser;
@@ -845,14 +934,14 @@ static bool compile_include(ApexVM *vm, AST *node) {
         
         file = fopen(fullpath, "r");
         if (!file) {
-            apexErr_syntax(node->parsestate, "cannot include specified path: %s", fullpath);
+            apexErr_syntax(node->srcloc, "cannot include specified path: %s", fullpath);
             return false;
         }
         free(fullpath);
     } else {
         file = fopen(incpath, "r");
         if (!file) {
-            apexErr_syntax(node->parsestate, "cannot include specified path: %s", incpath);
+            apexErr_syntax(node->srcloc, "cannot include specified path: %s", incpath);
             return false;
         }
     }
@@ -907,7 +996,7 @@ static bool compile_include(ApexVM *vm, AST *node) {
  *         otherwise.
  */
 static bool compile_switch(ApexVM *vm, AST *node) {
-    UPDATE_PARSESTATE(vm, node);
+    UPDATE_SRCLOC(vm, node);
     AST *left = node->left;
     
     int end_jumps[256];
@@ -924,18 +1013,18 @@ static bool compile_switch(ApexVM *vm, AST *node) {
 
             // Emit a jump to skip this case body
             EMIT_OP(vm, OP_JUMP_IF_FALSE);
-            int skip_jump = vm->chunk->ins_n - 1;
+            int skip_jump = vm->chunk->ins_count - 1;
             
             // Compile the case body
             if (!compile_statement(vm, case_node->right)) {
                 return false;
             }
             EMIT_OP(vm, OP_JUMP);
-            end_jumps[end_jumps_n++] = vm->chunk->ins_n - 1;
+            end_jumps[end_jumps_n++] = vm->chunk->ins_count - 1;
             
 
             // Patch the jump to this case
-            vm->chunk->ins[skip_jump].value.intval = vm->chunk->ins_n - skip_jump - 1;
+            vm->chunk->ins[skip_jump].value.intval = vm->chunk->ins_count - skip_jump - 1;
         }
     }
 
@@ -947,7 +1036,7 @@ static bool compile_switch(ApexVM *vm, AST *node) {
     }
     
     for (int i = 0; i < end_jumps_n; i++) {
-        vm->chunk->ins[end_jumps[i]].value.intval = vm->chunk->ins_n - end_jumps[i] - 1;
+        vm->chunk->ins[end_jumps[i]].value.intval = vm->chunk->ins_count - end_jumps[i] - 1;
     }
     return true;
 }
@@ -975,15 +1064,15 @@ static bool compile_loop(ApexVM *vm, AST *condition, AST *body, AST *increment) 
     int previous_loop_start = vm->loop_start;
     int previous_loop_end = vm->loop_end;
 
-    UPDATE_PARSESTATE(vm, condition);
-    vm->loop_start = vm->chunk->ins_n;
+    UPDATE_SRCLOC(vm, condition);
+    vm->loop_start = vm->chunk->ins_count;
 
     if (condition) {
         if (!compile_expression(vm, condition, true)) {
             return false;
         }
         EMIT_OP(vm, OP_JUMP_IF_FALSE);
-        vm->loop_end = vm->chunk->ins_n - 1;
+        vm->loop_end = vm->chunk->ins_count - 1;
     } else {
         vm->loop_end = -1;
     }
@@ -998,10 +1087,10 @@ static bool compile_loop(ApexVM *vm, AST *condition, AST *body, AST *increment) 
         }
     }
 
-    EMIT_OP_INT(vm, OP_JUMP, vm->loop_start - vm->chunk->ins_n - 1);
+    EMIT_OP_INT(vm, OP_JUMP, vm->loop_start - vm->chunk->ins_count - 1);
 
     if (condition) {
-        vm->chunk->ins[vm->loop_end].value.intval = vm->chunk->ins_n - vm->loop_end - 1;
+        vm->chunk->ins[vm->loop_end].value.intval = vm->chunk->ins_count - vm->loop_end - 1;
     }
 
     vm->loop_start = previous_loop_start;
@@ -1010,7 +1099,7 @@ static bool compile_loop(ApexVM *vm, AST *condition, AST *body, AST *increment) 
 }
 
 static bool compile_foreach(ApexVM *vm, AST *node) {
-    UPDATE_PARSESTATE(vm, node);
+    UPDATE_SRCLOC(vm, node);
     AST *key_var = node->left; 
     AST *value_var = node->right;
     AST *iterable = node->value.ast_node->left;
@@ -1025,18 +1114,20 @@ static bool compile_foreach(ApexVM *vm, AST *node) {
     EMIT_OP(vm, OP_ITER_START);
 
     // Record loop start
-    int loop_start = vm->chunk->ins_n;
+    int loop_start = vm->chunk->ins_count;
 
     // Emit OP_ITER_NEXT to fetch the next item
     EMIT_OP(vm, OP_ITER_NEXT);
 
     // Emit OP_JUMP_IF_DONE to check iteration end
     EMIT_OP(vm, OP_JUMP_IF_DONE);
-    int loop_end = vm->chunk->ins_n - 1; // Address for later patching
+    int loop_end = vm->chunk->ins_count - 1; // Address for later patching
 
     // Compile assignment of key and/or value
     if (key_var) {
         EMIT_OP_STR(vm, vm->in_function ? OP_SET_LOCAL : OP_SET_GLOBAL, key_var->value.strval);
+    } else {
+        EMIT_OP(vm, OP_POP);
     }
     if (value_var) {
         EMIT_OP_STR(vm, vm->in_function ? OP_SET_LOCAL : OP_SET_GLOBAL, value_var->value.strval);
@@ -1048,10 +1139,10 @@ static bool compile_foreach(ApexVM *vm, AST *node) {
     }
 
     // Emit a jump back to the loop start
-    EMIT_OP_INT(vm, OP_JUMP, loop_start - vm->chunk->ins_n - 1);
+    EMIT_OP_INT(vm, OP_JUMP, loop_start - vm->chunk->ins_count - 1);
 
     // Patch the OP_JUMP_IF_DONE to jump to after the loop
-    vm->chunk->ins[loop_end].value.intval = vm->chunk->ins_n - loop_end - 1;
+    vm->chunk->ins[loop_end].value.intval = vm->chunk->ins_count - loop_end - 1;
 
     return true;
 }
@@ -1079,29 +1170,29 @@ static bool compile_statement(ApexVM *vm, AST *node) {
         int false_jmp_i;
         int true_jmp_i;
 
-        UPDATE_PARSESTATE(vm, node);
+        UPDATE_SRCLOC(vm, node);
 
         if (!compile_expression(vm, node->left, true)) { // Condition
             return false;
         }
         EMIT_OP(vm, OP_JUMP_IF_FALSE);
-        false_jmp_i = vm->chunk->ins_n - 1;
+        false_jmp_i = vm->chunk->ins_count - 1;
 
         if (!compile_statement(vm, node->right)) { // Block or statement 
             return false;
         }
         EMIT_OP(vm, OP_JUMP);
-        true_jmp_i = vm->chunk->ins_n - 1;
+        true_jmp_i = vm->chunk->ins_count - 1;
 
         if (node->value.ast_node) {
-            vm->chunk->ins[false_jmp_i].value.intval = vm->chunk->ins_n - false_jmp_i - 1;
+            vm->chunk->ins[false_jmp_i].value.intval = vm->chunk->ins_count - false_jmp_i - 1;
             if (!compile_statement(vm, node->value.ast_node)) {
                 return false;
             }
         } else {
-            vm->chunk->ins[false_jmp_i].value.intval = vm->chunk->ins_n - false_jmp_i - 1;
+            vm->chunk->ins[false_jmp_i].value.intval = vm->chunk->ins_count - false_jmp_i - 1;
         }
-        vm->chunk->ins[true_jmp_i].value.intval = vm->chunk->ins_n - true_jmp_i - 1;
+        vm->chunk->ins[true_jmp_i].value.intval = vm->chunk->ins_count - true_jmp_i - 1;
         break;
     }
     case AST_SWITCH:
@@ -1127,18 +1218,18 @@ static bool compile_statement(ApexVM *vm, AST *node) {
         
     case AST_CONTINUE:
         if (vm->loop_start == -1) {
-            apexErr_syntax(node->parsestate, "invalid 'continue' outside of loop");
+            apexErr_syntax(node->srcloc, "invalid 'continue' outside of loop");
             return false;
         }
-        EMIT_OP_INT(vm, OP_JUMP, vm->loop_start - vm->chunk->ins_n - 1);
+        EMIT_OP_INT(vm, OP_JUMP, vm->loop_start - vm->chunk->ins_count - 1);
         break;
 
     case AST_BREAK:
         if (vm->loop_end == -1) {
-            apexErr_syntax(node->parsestate,"invalid 'break' outside of loop");
+            apexErr_syntax(node->srcloc,"invalid 'break' outside of loop");
             return false;
         }
-        EMIT_OP_INT(vm, OP_JUMP, vm->loop_end - vm->chunk->ins_n - 1);
+        EMIT_OP_INT(vm, OP_JUMP, vm->loop_end - vm->chunk->ins_count - 1);
         break;
 
     case AST_FN_DECL:
@@ -1189,7 +1280,7 @@ static bool compile_statement(ApexVM *vm, AST *node) {
  *           instruction chunk and the local and global symbol tables.
  * @param program The AST node representing the program to be compiled.
  */
-bool compile(ApexVM *vm, AST *program) {
+bool apexCode_compile(ApexVM *vm, AST *program) {
     if (program->left) {
         if (!compile_statement(vm, program->left)) {
             return false;

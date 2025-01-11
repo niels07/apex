@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -Werror -Wno-implicit-fallthrough -std=c99 -g -rdynamic
 BIN = apex
-OBJ = main.o error.o lexer.o mem.o apexStr.o ast.o parser.o apexVal.o symbol.o vm.o compiler.o util.o lib.o
+OBJ = main.o apexErr.o apexLex.o apexMem.o apexStr.o apexAST.o apexParse.o apexVal.o apexSym.o apexVM.o apexCode.o apexUtil.o apexLib.o
 LIB_OBJ = lib/libio.so lib/libstd.so
 
 all: $(OBJ) $(LIB_OBJ)
@@ -10,41 +10,41 @@ all: $(OBJ) $(LIB_OBJ)
 main.o: main.c
 	$(CC) $(CFLAGS) -c main.c
 
-error.o: error.c error.h
-	$(CC) $(CFLAGS) -c error.c
+apexErr.o: apexErr.c apexErr.h
+	$(CC) $(CFLAGS) -c apexErr.c
 
-lexer.o: lexer.c lexer.h
-	$(CC) $(CFLAGS) -c lexer.c
+apexLex.o: apexLex.c apexLex.h
+	$(CC) $(CFLAGS) -c apexLex.c
 
-mem.o: mem.c mem.h
-	$(CC) $(CFLAGS) -c mem.c
+apexMem.o: apexMem.c apexMem.h
+	$(CC) $(CFLAGS) -c apexMem.c
 
 apexStr.o: apexStr.c apexStr.h	
 	$(CC) $(CFLAGS) -c apexStr.c
 
-ast.o: ast.c ast.h
-	$(CC) $(CFLAGS) -c ast.c
+apexAST.o: apexAST.c apexAST.h
+	$(CC) $(CFLAGS) -c apexAST.c
 
 apexVal.o: apexVal.c apexVal.h
 	$(CC) $(CFLAGS) -c apexVal.c
 
-symbol.o: symbol.c symbol.h
-	$(CC) $(CFLAGS) -c symbol.c
+apexSym.o: apexSym.c apexSym.h
+	$(CC) $(CFLAGS) -c apexSym.c
 
-vm.o: vm.c vm.h
-	$(CC) $(CFLAGS) -c vm.c
+apexVM.o: apexVM.c apexVM.h
+	$(CC) $(CFLAGS) -c apexVM.c
 
-compiler.o: compiler.c compiler.h
-	$(CC) $(CFLAGS) -c compiler.c
+apexCode.o: apexCode.c apexCode.h
+	$(CC) $(CFLAGS) -c apexCode.c
 
-parser.o: parser.c parser.h
-	$(CC) $(CFLAGS) -c parser.c
+apexParse.o: apexParse.c apexParse.h
+	$(CC) $(CFLAGS) -c apexParse.c
 
-lib.o: lib.c lib.h
-	$(CC) $(CFLAGS) -c lib.c
+apexLib.o: apexLib.c apexLib.h
+	$(CC) $(CFLAGS) -c apexLib.c
 
-util.o: util.c util.h
-	$(CC) $(CFLAGS) -c util.c
+apexUtil.o: apexUtil.c apexUtil.h
+	$(CC) $(CFLAGS) -c apexUtil.c
 
 lib/libio.so: lib/io.c lib/io.h
 	$(CC) -shared -I . -o lib/libio.so -fPIC lib/io.c

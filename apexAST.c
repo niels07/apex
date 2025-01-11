@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "ast.h"
-#include "mem.h"
+#include "apexAST.h"
+#include "apexMem.h"
 
 static const char *get_ast_node_type_name(ASTNodeType type) {
     switch (type) {
@@ -12,8 +12,29 @@ static const char *get_ast_node_type_name(ASTNodeType type) {
         case AST_STR: return "AST_STR";
         case AST_BOOL: return "AST_BOOL";
         case AST_NULL: return "AST_NULL";
-        case AST_BINARY_EXPR: return "AST_BINARY_EXPR";
-        case AST_UNARY_EXPR: return "AST_UNARY_EXPR";
+        case AST_BIN_ADD: return "AST_BIN_ADD";
+        case AST_BIN_SUB: return "AST_BIN_SUB";
+        case AST_BIN_MUL: return "AST_BIN_MUL";
+        case AST_BIN_DIV: return "AST_BIN_DIV";
+        case AST_BIN_MOD: return "AST_BIN_MOD";
+        case AST_BIN_GT: return "AST_BIN_GT";
+        case AST_BIN_LT: return "AST_BIN_LT";
+        case AST_BIN_LE: return "AST_BIN_LE";
+        case AST_BIN_GE: return "AST_BIN_GE";
+        case AST_BIN_BITWISE_AND: return "AST_BIN_BITWISE_AND";
+        case AST_BIN_BITWISE_OR: return "AST_BIN_BITWISE_OR";
+        case AST_BIN_EQ: return "AST_BIN_EQ";
+        case AST_BIN_NE: return "AST_BIN_NE";
+        case AST_UNARY_ADD: return "AST_UNARY_ADD";
+        case AST_UNARY_SUB: return "AST_UNARY_SUB";
+        case AST_UNARY_NOT: return "AST_UNARY_NOT";
+        case AST_UNARY_INC: return "AST_UNARY_INC";
+        case AST_UNARY_DEC: return "AST_UNARY_DEC";
+        case AST_ASSIGN_ADD: return "AST_ASSIGN_ADD";
+        case AST_ASSIGN_SUB: return "AST_ASSIGN_SUB";
+        case AST_ASSIGN_MUL: return "AST_ASSIGN_MUL";
+        case AST_ASSIGN_DIV: return "AST_ASSIGN_DIV";
+        case AST_ASSIGN_MOD: return "AST_ASSIGN_MOD";
         case AST_LOGICAL_EXPR: return "AST_LOGICAL_EXPR";
         case AST_VAR: return "AST_VARIABLE";
         case AST_ASSIGNMENT: return "AST_ASSIGNMENT";
@@ -75,8 +96,8 @@ void print_ast(AST *node, int indent) {
         printf(", Value: \"%s\"", node->value.strval->value);
     }
 
-    if (node->parsestate.lineno > 0) {
-        printf(", Line: %d", node->parsestate.lineno);
+    if (node->srcloc.lineno > 0) {
+        printf(", Line: %d", node->srcloc.lineno);
     }
     printf("\n");
 
@@ -116,18 +137,18 @@ void print_ast(AST *node, int indent) {
  * @param left The left child of the new node.
  * @param right The right child of the new node.
  * @param value The value associated with the new node.
- * @param parsestate The source location of the new node.
+ * @param srcloc The source location of the new node.
  *
  * @return A pointer to the newly allocated abstract syntax tree node.
  */
-AST *create_ast_node(ASTNodeType type, AST *left, AST *right, ASTValue value, bool val_is_ast, ParseState parsestate) {
+AST *create_ast_node(ASTNodeType type, AST *left, AST *right, ASTValue value, bool val_is_ast, SrcLoc srcloc) {
     AST *node = apexMem_alloc(sizeof(AST));
     node->type = type;
     node->left = left;
     node->right = right;
     node->value = value;
     node->val_is_ast = val_is_ast;
-    node->parsestate = parsestate;
+    node->srcloc = srcloc;
     return node;
 }
 
@@ -138,7 +159,7 @@ AST *create_ast_node(ASTNodeType type, AST *left, AST *right, ASTValue value, bo
  * as an error node with the given source location. The node has no
  * children and has a default value of zero.
  *
- * @param parsestate The source location to associate with the error node.
+ * @param srcloc The source location to associate with the error node.
  * @return A pointer to the newly allocated error AST node.
  */
 
@@ -147,8 +168,8 @@ AST *create_error_ast(void) {
     node->type = AST_ERROR;
     node->left = NULL;
     node->right = NULL;
-    node->parsestate.filename = NULL;
-    node->parsestate.lineno = 0;
+    node->srcloc.filename = NULL;
+    node->srcloc.lineno = 0;
     node->val_is_ast = false;
     node->value = ast_value_zero();
     return node;

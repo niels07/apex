@@ -1,8 +1,13 @@
-#ifndef TOKEN_H
-#define TOKEN_H
+#ifndef APEX_LEX_H
+#define APEX_LEX_H
 
+#include <stdbool.h>
 #include "apexStr.h"
-#include "srcloc.h"
+
+typedef struct {
+    int lineno;
+    const char *filename;
+} SrcLoc;
 
 typedef enum {
     TOKEN_IDENT,
@@ -23,6 +28,7 @@ typedef enum {
     TOKEN_MINUS,
     TOKEN_STAR,
     TOKEN_SLASH,
+    TOKEN_PERCENT,
     TOKEN_PLUS_PLUS,
     TOKEN_MINUS_MINUS,
     TOKEN_EQUAL,
@@ -30,6 +36,7 @@ typedef enum {
     TOKEN_MINUS_EQUAL,
     TOKEN_STAR_EQUAL,
     TOKEN_SLASH_EQUAL,
+    TOKEN_MOD_EQUAL,
     TOKEN_EQUAL_EQUAL,
     TOKEN_NOT_EQUAL,
     TOKEN_LESS,
@@ -66,7 +73,20 @@ typedef enum {
 typedef struct {
     TokenType type;
     ApexString *str;
-    ParseState parsestate;
+    SrcLoc srcloc;
 } Token;
+
+typedef struct {
+    char *source;
+    int length;
+    int position;
+    SrcLoc srcloc;
+} Lexer;
+
+extern void apexLex_feedline(Lexer *lexer, const char *line);
+extern ApexString *get_token_str(TokenType type);
+extern void init_lexer(Lexer *lexer, const char *filename, char *source);
+extern Token *get_next_token(Lexer *lexer);
+extern void free_token(Token *token);
 
 #endif

@@ -1,13 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "vm.h"
-#include "symbol.h"
-#include "mem.h"
+#include <math.h>
+#include "apexVM.h"
+#include "apexSym.h"
+#include "apexMem.h"
 #include "apexStr.h"
-#include "error.h"
-#include "lib.h"
-#include "parser.h"
+#include "apexErr.h"
+#include "apexLib.h"
+#include "apexParse.h"
 
 #define STACK_PUSH(vm, val) ((vm)->stack[(vm)->stack_top++] = (val))
 #define STACK_POP(vm)       ((vm)->stack[--(vm)->stack_top])
@@ -27,6 +28,7 @@ static const char *opcode_to_string(OpCode opcode) {
         case OP_SUB: return "OP_SUB";
         case OP_MUL: return "OP_MUL";
         case OP_DIV: return "OP_DIV";
+        case OP_MOD: return "OP_MOD";
         case OP_PRE_INC_LOCAL: return "OP_PRE_INC_LOCAL";
         case OP_POST_INC_LOCAL: return "OP_POST_INC_LOCAL";
         case OP_PRE_INC_GLOBAL: return "OP_PRE_INC_GLOBAL";
@@ -70,7 +72,7 @@ static const char *opcode_to_string(OpCode opcode) {
 
 void print_vm_instructions(ApexVM *vm) {
     printf("== ApexVM Instructions ==\n");
-    for (int i = 0; i < vm->chunk->ins_n; i++) {
+    for (int i = 0; i < vm->chunk->ins_count; i++) {
         Ins *instr = &vm->chunk->ins[i];
         printf("%04d: %-20s", i, opcode_to_string(instr->opcode));
         
@@ -130,11 +132,11 @@ void init_vm(ApexVM *vm) {
     vm->chunk = apexMem_alloc(sizeof(Chunk));
     vm->chunk->ins = apexMem_alloc(sizeof(Ins) * 8);
     vm->chunk->ins_size = 8;
-    vm->chunk->ins_n = 0;
+    vm->chunk->ins_count = 0;
     vm->loop_start = -1;
     vm->loop_end = -1;
-    vm->parsestate.lineno = 0;
-    vm->parsestate.filename = NULL;
+    vm->srcloc.lineno = 0;
+    vm->srcloc.filename = NULL;
     vm->call_stack_top = 0;
     vm->obj_context = apexVal_makenull();
     init_symbol_table(&vm->global_table);
@@ -154,7 +156,7 @@ void apexVM_reset(ApexVM *vm) {
     free(vm->chunk->ins);
     vm->chunk->ins = apexMem_alloc(sizeof(Ins) * 8);
     vm->chunk->ins_size = 8;
-    vm->chunk->ins_n = 0;
+    vm->chunk->ins_count = 0;
 }
 
 /**
@@ -181,14 +183,14 @@ void free_vm(ApexVM *vm) {
  * being pushed onto the call stack.
  *
  * @param fn_name The name of the function being called.
- * @param parsestate The source location of the call site.
+ * @param srcloc The source location of the call site.
  * @param obj_context The object context of the call.
  * @return A call frame structure with the given information.
  */
-static CallFrame create_callframe(const char *fn_name, ParseState parsestate) {
+static CallFrame create_callframe(const char *fn_name, SrcLoc srcloc) {
     CallFrame callframe;
     callframe.fn_name = fn_name;
-    callframe.parsestate = parsestate;
+    callframe.srcloc = srcloc;
     return callframe;
 }
 
@@ -203,14 +205,14 @@ static CallFrame create_callframe(const char *fn_name, ParseState parsestate) {
  *
  * @param vm A pointer to the virtual machine structure.
  * @param fn_name The name of the function for the new call frame.
- * @param parsestate The source location for the new call frame.
+ * @param srcloc The source location for the new call frame.
  * @param obj_context The object context for the new call frame.
  */
-static void push_callframe(ApexVM *vm, const char *fn_name, ParseState parsestate) {
+static void push_callframe(ApexVM *vm, const char *fn_name, SrcLoc srcloc) {
     if (vm->call_stack_top >= CALL_STACK_MAX) {
-        apexErr_fatal(parsestate, "Call stack overflow!");
+        apexErr_fatal(srcloc, "Call stack overflow!");
     }
-    vm->call_stack[vm->call_stack_top++] = create_callframe(fn_name, parsestate);
+    vm->call_stack[vm->call_stack_top++] = create_callframe(fn_name, srcloc);
 }
 
 /**
@@ -223,12 +225,12 @@ static void push_callframe(ApexVM *vm, const char *fn_name, ParseState parsestat
  *
  * @param vm A pointer to the virtual machine instance whose call stack the
  *           callframe will be popped from.
- * @param parsestate The source location for the error message if the call stack is
+ * @param srcloc The source location for the error message if the call stack is
  *               underflow.
  */
-static CallFrame pop_callframe(ApexVM *vm, ParseState parsestate) {
+static CallFrame pop_callframe(ApexVM *vm, SrcLoc srcloc) {
     if (vm->call_stack_top == 0) {
-        apexErr_fatal(parsestate, "call stack underflow!");
+        apexErr_fatal(srcloc, "call stack underflow!");
     }
     return vm->call_stack[--vm->call_stack_top];
 }
@@ -263,7 +265,7 @@ static Ins *next_ins(ApexVM *vm) {
  */
 static void stack_push(ApexVM *vm, ApexValue value) {
     if (vm->stack_top >= STACK_MAX) {
-        apexErr_fatal(vm->parsestate, "stack overflow\n");
+        apexErr_fatal(vm->srcloc, "stack overflow\n");
     }
     vm->stack[vm->stack_top++] = value;
 }
@@ -284,7 +286,7 @@ static void stack_push(ApexVM *vm, ApexValue value) {
 static ApexValue stack_pop(ApexVM *vm) {
     ApexValue value;
     if (vm->stack_top == 0) {
-        apexErr_fatal(vm->parsestate, "stack underflow");
+        apexErr_fatal(vm->srcloc, "stack underflow");
     }
     value = vm->stack[--vm->stack_top];
     return value;
@@ -311,7 +313,7 @@ static ApexValue stack_top(ApexVM *vm) {
  */
 ApexValue apexVM_peek(ApexVM *vm, int offset) {
     if (vm->stack_top - 1 - offset < 0) {
-        apexErr_fatal(vm->parsestate, "stack underflow: invalid offset");
+        apexErr_fatal(vm->srcloc, "stack underflow: invalid offset");
     }
     return vm->stack[vm->stack_top - 1 - offset];
 }
@@ -573,6 +575,13 @@ static ApexValue vm_mul(ApexVM *vm, ApexValue a, ApexValue b) {
     return apexVal_makenull();
 }
 
+/**
+ * Checks if the value of `x` is zero, and if so, raises a runtime error
+ * and returns a null value.
+ *
+ * @param vm A pointer to the virtual machine instance.
+ * @param x The value to check.
+ */
 #define CHECK_DIV_ZERO(vm, x) do { \
     if (x == 0) { \
         apexErr_runtime(vm, "division by zero"); \
@@ -627,6 +636,80 @@ static ApexValue vm_div(ApexVM *vm, ApexValue a, ApexValue b) {
     }
     apexErr_runtime(
         vm, "cannot divide %s by %s", 
+        apexVal_typestr(a), 
+        apexVal_typestr(b));
+    return apexVal_makenull();
+}
+
+/**
+ * Checks if the value of `x` is zero, and if so, raises a runtime error
+ * and returns a null value.
+ *
+ * @param vm A pointer to the virtual machine instance.
+ * @param x The value to check.
+ */
+#define CHECK_MOD_ZERO(vm, x) do { \
+    if (x == 0) { \
+        apexErr_runtime(vm, "modulus by zero"); \
+        return apexVal_makenull(); \
+    } \
+} while (0)
+
+/**
+ * Computes the modulus of two values, `a` and `b`, and returns the result as
+ * an ApexValue.
+ *
+ * The modulus operator can be used on both integers and floats. If the
+ * modulus results in a remainder, the remainder is the result of the
+ * operation.
+ *
+ * If the types of `a` and `b` are incompatible for modulus, an
+ * error is raised and a null value is returned.
+ *
+ * @param vm A pointer to the virtual machine instance.
+ * @param a The first operand as an ApexValue.
+ * @param b The second operand as an ApexValue.
+ * @return The result of the modulus as an ApexValue.
+ */
+static ApexValue vm_mod(ApexVM *vm, ApexValue a, ApexValue b) {
+    if (a.type == APEX_VAL_INT && b.type == APEX_VAL_INT) {
+        CHECK_MOD_ZERO(vm, b.intval);        
+        return apexVal_makeint(a.intval % b.intval);
+    }
+    if (a.type == APEX_VAL_INT && b.type == APEX_VAL_FLT) {
+        CHECK_MOD_ZERO(vm, b.fltval);
+        return apexVal_makeflt(a.intval % (int)roundf(b.fltval));
+    }
+    if (a.type == APEX_VAL_INT && b.type == APEX_VAL_DBL) {
+        CHECK_MOD_ZERO(vm, b.dblval);
+        return apexVal_makedbl(a.intval % (int)round(b.dblval));
+    }
+    if (a.type == APEX_VAL_FLT && b.type == APEX_VAL_FLT) {
+        CHECK_MOD_ZERO(vm, b.fltval);
+        return apexVal_makeflt((int)roundf(a.fltval) % (int)roundf(b.fltval));
+    }
+    if (a.type == APEX_VAL_FLT && b.type == APEX_VAL_INT) {
+        CHECK_MOD_ZERO(vm, b.intval);
+        return apexVal_makeflt((int)roundf(a.fltval) / b.intval);
+    }
+    if (a.type == APEX_VAL_FLT && b.type == APEX_VAL_DBL) {
+        CHECK_MOD_ZERO(vm, b.dblval);
+        return apexVal_makedbl((int)roundf(a.fltval) / (int)round(b.dblval));
+    }
+    if (a.type == APEX_VAL_DBL && b.type == APEX_VAL_DBL) {
+        CHECK_MOD_ZERO(vm, b.dblval);
+        return apexVal_makedbl((int)round(a.dblval) / (int)round(b.dblval));
+    }
+    if (a.type == APEX_VAL_DBL && b.type == APEX_VAL_INT) {
+        CHECK_MOD_ZERO(vm, b.intval);
+        return apexVal_makedbl((int)round(a.dblval) / b.intval);
+    }
+    if (a.type == APEX_VAL_DBL && b.type == APEX_VAL_FLT) {
+        CHECK_MOD_ZERO(vm, b.fltval);
+        return apexVal_makedbl((int)round(a.dblval) / (int)roundf(b.fltval));
+    }
+    apexErr_runtime(
+        vm, "cannot apply modulus on %s by %s", 
         apexVal_typestr(a), 
         apexVal_typestr(b));
     return apexVal_makenull();
@@ -864,17 +947,25 @@ bool vm_dispatch(ApexVM *vm) {
             stack_push(vm, value);
             break;        
         }
+        case OP_MOD: {
+            ApexValue value = vm_mod(vm, stack_pop(vm), stack_pop(vm));
+            if (value.type == APEX_VAL_NULL) {
+                return false;
+            }
+            stack_push(vm, value);
+            break;
+        }
         case OP_RETURN: {
             ApexValue ret_val;
             int ret_addr = 0;
-            CallFrame frame = pop_callframe(vm, ins->parsestate);
+            CallFrame frame = pop_callframe(vm, ins->srcloc);
             if (vm->obj_context.type == APEX_VAL_OBJ && 
                 frame.fn_name == apexStr_new("new", 3)->value) {
                 ApexValue obj_context = vm->obj_context;                
                 if (vm->stack_top == 1) {
                     ret_addr = stack_pop(vm).intval;
                 } else if (vm->stack_top > 1) {
-                    apexErr_error(vm->parsestate, "warning: return value of 'new' is discarded'");
+                    apexErr_error(vm->srcloc, "warning: return value of 'new' is discarded'");
                     stack_pop(vm);
                     ret_addr = stack_pop(vm).intval;
                 }                
@@ -910,14 +1001,14 @@ bool vm_dispatch(ApexVM *vm) {
             }
 
             int ret_addr = vm->ip;
-            Fn *fn = fnval.fnval;
+            ApexFn *fn = fnval.fnval;
             
             if (argc != fn->argc) {
                 apexErr_runtime(vm, "expected %d arguments, got %d", fn->argc, argc);
                 return false;
             }
 
-            push_callframe(vm, fn->name, ins->parsestate);
+            push_callframe(vm, fn->name, ins->srcloc);
             push_scope(&vm->local_scopes);            
             
             for (int i = 0; i < fn->argc; i++) {
@@ -984,7 +1075,7 @@ bool vm_dispatch(ApexVM *vm) {
         }
 
         case OP_CREATE_ARRAY: {
-            Array *array = apexVal_newarray();
+            ApexArray *array = apexVal_newarray();
             int i = vm->stack_top - ins->value.intval * 2;
             while (i < vm->stack_top - 1) {                
                 ApexValue key = vm->stack[i];
@@ -1045,13 +1136,13 @@ bool vm_dispatch(ApexVM *vm) {
             
             if (apexVal_objectget(&newFnVal, obj, apexStr_new("new", 3)->value)) {
                 int ret_addr = vm->ip;
-                Fn *fn = newFnVal.fnval;
+                ApexFn *fn = newFnVal.fnval;
                 int argc = ins->value.intval;
                 if (argc != fn->argc) {
                     apexErr_runtime(vm, "expected %d arguments, got %d", fn->argc, argc);
                     return false;
                 }
-                push_callframe(vm, fn->name, ins->parsestate);
+                push_callframe(vm, fn->name, ins->srcloc);
                 push_scope(&vm->local_scopes);
                 for (int i = 0; i < fn->argc; i++) {
                     ApexValue arg = stack_pop(vm);
@@ -1127,7 +1218,7 @@ bool vm_dispatch(ApexVM *vm) {
                 }
                 break;
             }
-            Fn *fn = fnval.fnval;
+            ApexFn *fn = fnval.fnval;
             int ret_addr = vm->ip;
             stack_pop(vm);
 
@@ -1136,7 +1227,7 @@ bool vm_dispatch(ApexVM *vm) {
                 return false;
             }
 
-            push_callframe(vm, fn->name, ins->parsestate);
+            push_callframe(vm, fn->name, ins->srcloc);
             push_scope(&vm->local_scopes);            
             
             for (int i = 0; i < fn->argc; i++) {

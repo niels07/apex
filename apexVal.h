@@ -20,7 +20,7 @@ typedef enum {
     APEX_VAL_TYPE,
     APEX_VAL_OBJ,
     APEX_VAL_NULL
-} ValueType;
+} ApexValueType;
 
 typedef struct {
     int argc;
@@ -34,23 +34,23 @@ typedef struct {
     int argc;
     int addr;
     int refcount;
-} Fn;
+} ApexFn;
 
-typedef struct Array Array;
+typedef struct ApexArray ApexArray;
 typedef struct ApexObject ApexObject;
 
 typedef struct {
-    ValueType type;
+    ApexValueType type;
     union {
         int intval;
         float fltval;
         double dblval;
         ApexString *strval;
         bool boolval;
-        Fn *fnval;
+        ApexFn *fnval;
         ApexCfn cfnval;
         void *ptrval;
-        Array *arrval;
+        ApexArray *arrval;
         ApexObject *objval;
     };
 } ApexValue;
@@ -62,7 +62,7 @@ typedef struct ArrayEntry {
     int index;
 } ArrayEntry;
 
-struct Array {
+struct ApexArray {
     ArrayEntry **entries;
     ArrayEntry **iter;
     int entry_size;
@@ -81,7 +81,7 @@ typedef struct ApexObjectEntry {
 struct ApexObject {
     ApexObjectEntry **entries;
     int size;
-    int n;
+    int count;
     int refcount;
     const char *name;
 };
@@ -94,7 +94,7 @@ struct ApexObject {
 #define apexVal_fn(v) (v.fnval)
 #define apexVal_type(v) (v.type)
 
-extern Fn *apexVal_newfn(const char *name, const char **params, int argc, int addr);
+extern ApexFn *apexVal_newfn(const char *name, const char **params, int argc, int addr);
 extern ApexCfn apexVal_newcfn(char *name, int argc, int (*fn)(ApexVM *));
 extern const char *apexVal_typestr(ApexValue value);
 extern char *apexVal_tostr(ApexValue value);
@@ -103,9 +103,9 @@ extern ApexValue apexVal_makeflt(float value);
 extern ApexValue apexVal_makedbl(double value);
 extern ApexValue apexVal_makestr(ApexString *value);
 extern ApexValue apexVal_makebool(bool value);
-extern ApexValue apexVal_makefn(Fn *function);
+extern ApexValue apexVal_makefn(ApexFn *function);
 extern ApexValue apexVal_makecfn(ApexCfn cfn);
-extern ApexValue apexVal_makearr(Array *arr);
+extern ApexValue apexVal_makearr(ApexArray *arr);
 extern ApexValue apexVal_maketype(ApexObject *obj);
 extern ApexValue apexVal_makeobj(ApexObject *obj);
 extern ApexValue apexVal_makeptr(void *ptr);
@@ -114,15 +114,15 @@ extern bool apexVal_tobool(ApexValue value);
 extern int apexVal_arrlen(ApexValue value);
 extern void apexVal_retain(ApexValue value);
 extern void apexVal_release(ApexValue value);
-extern Array *apexVal_newarray(void);
+extern ApexArray *apexVal_newarray(void);
 extern ApexObject *apexVal_newobject(const char *name);
 extern ApexObject *apexVal_objectcpy(ApexObject *object);
-extern void apexVal_freearray(Array *array);
+extern void apexVal_freearray(ApexArray *array);
 extern void apexVal_freeobject(ApexObject *object);
-extern void apexVal_arrayset(Array *array, ApexValue key, ApexValue value);
+extern void apexVal_arrayset(ApexArray *array, ApexValue key, ApexValue value);
 extern void apexVal_objectset(ApexObject *object, const char *key, ApexValue value);
-extern bool apexVal_arrayget(ApexValue *value, Array *array, const ApexValue key);
+extern bool apexVal_arrayget(ApexValue *value, ApexArray *array, const ApexValue key);
 extern bool apexVal_objectget(ApexValue *value, ApexObject *object, const char *key);
-extern void apexVal_arraydel(Array *array, const ApexValue key);
+extern void apexVal_arraydel(ApexArray *array, const ApexValue key);
 
 #endif

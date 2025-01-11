@@ -8,9 +8,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
-#include "lib.h"
-#include "util.h"
-#include "mem.h"
+#include "apexLib.h"
+#include "apexUtil.h"
+#include "apexMem.h"
 #include "apexStr.h"
 
 #define LIB_TABLE_SIZE 1024
@@ -54,7 +54,7 @@ static const char *LIB_PATHS[] = {
 void apexLib_add(const char *libname, const char *fnname, ApexLibFn fn) {
     char key[1024];
     snprintf(key, sizeof(key), "%s:%s", libname, fnname);
-    unsigned int index = apexUtl_hash(key) % LIB_TABLE_SIZE;
+    unsigned int index = apexUtil_hash(key) % LIB_TABLE_SIZE;
     LibEntry *entry = apexMem_alloc(sizeof(LibEntry));
 
     entry->key = apexStr_new(key, strlen(key))->value;
@@ -82,7 +82,7 @@ ApexLibFn apexLib_get(const char *libname, const char *fnname) {
     char key[1024];
     snprintf(key, sizeof(key), "%s:%s", libname, fnname);
     ApexString *keystr = apexStr_new(key, strlen(key));
-    unsigned int index = apexUtl_hash(key) % LIB_TABLE_SIZE;
+    unsigned int index = apexUtil_hash(key) % LIB_TABLE_SIZE;
     LibEntry *entry = lib_table[index];
     while (entry) {
         if (entry->key == keystr->value) {

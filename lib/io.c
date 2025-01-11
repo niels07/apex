@@ -1,11 +1,11 @@
 #include <string.h>
 #include <stdlib.h>
-#include "vm.h"
+#include "apexVM.h"
 #include "apexVal.h"
 #include "apexStr.h"
-#include "util.h"
-#include "lib.h"
-#include "error.h"
+#include "apexUtil.h"
+#include "apexLib.h"
+#include "apexErr.h"
 
 int io_write(ApexVM *vm) {
     ApexValue value = apexVM_pop(vm);
@@ -20,7 +20,7 @@ int io_print(ApexVM *vm) {
 }
 
 int io_read(ApexVM *vm) {
-    ApexString *line = apexUtl_readline(stdin);
+    ApexString *line = apexUtil_readline(stdin);
     apexVM_pushval(vm, apexVal_makestr(line));
     return 0;
 }
@@ -82,7 +82,7 @@ int io_open(ApexVM *vm) {
     ApexObject *obj = apexVal_newobject(apexStr_new("File", 4)->value);
     apexVal_objectset(obj, apexStr_new("__file_ptr", 10)->value, apexVal_makeptr(file));
     if (strchr(apexVal_str(mode)->value, 'r')) {
-        Array *lines = apexVal_newarray();
+        ApexArray *lines = apexVal_newarray();
         char line[1024];
         int i = 0;
         while (fgets(line, sizeof(line), file)) {

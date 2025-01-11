@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include "symbol.h"
-#include "mem.h"
+#include "apexSym.h"
+#include "apexMem.h"
 #include "apexStr.h"
 #include "apexVal.h"
 

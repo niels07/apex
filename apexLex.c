@@ -2,10 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include "lexer.h"
+#include "apexLex.h"
 #include "apexStr.h"
-#include "mem.h"
-#include "error.h"
+#include "apexMem.h"
+#include "apexErr.h"
 
 typedef struct {
     const char *str;
@@ -32,6 +32,7 @@ static TokenStr tk2str[] = {
     {"-", 1}, 
     {"*", 1}, 
     {"/", 1},
+    {"%%", 1},
     {"++", 2}, 
     {"--", 2},
     {"=", 1}, 
@@ -39,6 +40,7 @@ static TokenStr tk2str[] = {
     {"-=", 2}, 
     {"*=", 2}, 
     {"/=", 2},
+    {"%%=", 2},
     {"==", 2},
     {"!=", 2},
     {"<", 1},
@@ -77,9 +79,10 @@ static ApexString *IF_STR, *ELIF_STR, *ELSE_STR,
     *FN_STR, 
     *FOR_STR, *WHILE_STR, *FOREACH_STR, *IN_STR,
     *RETURN_STR, 
-    *PLUS_STR, *MINUS_STR, *STAR_STR, *SLASH_STR, 
+    *PLUS_STR, *MINUS_STR, *STAR_STR, *SLASH_STR, *MOD_STR,
     *PLUS_PLUS_STR, *MINUS_MINUS_STR, 
-    *EQUAL_STR, *PLUS_EQUAL_STR, *MINUS_EQUAL_STR, *STAR_EQUAL_STR, *SLASH_EQUAL_STR, 
+    *EQUAL_STR, *PLUS_EQUAL_STR, *MINUS_EQUAL_STR, 
+    *STAR_EQUAL_STR, *SLASH_EQUAL_STR, *MOD_EQUAL_STR,
     *EQUAL_EQUAL_STR, *NOT_EQUAL_STR, 
     *LESS_STR, *GREATER_STR, *LESS_EQUAL_STR, *GREATER_EQUAL_STR, 
     *NOT_STR,
@@ -119,6 +122,7 @@ static void init_lexer_globals() {
     MINUS_STR = apexStr_new("-", 1);
     STAR_STR = apexStr_new("*", 1);
     SLASH_STR = apexStr_new("/", 1);
+    MOD_STR = apexStr_new("%%", 1);
     PLUS_PLUS_STR = apexStr_new("++", 2);
     MINUS_MINUS_STR = apexStr_new("--", 2);
     EQUAL_STR = apexStr_new("=", 1);
@@ -126,6 +130,7 @@ static void init_lexer_globals() {
     MINUS_EQUAL_STR = apexStr_new("-=", 2);
     STAR_EQUAL_STR = apexStr_new("*=", 2);
     SLASH_EQUAL_STR = apexStr_new("/=", 2);
+    MOD_EQUAL_STR = apexStr_new("%%=", 2);
     EQUAL_EQUAL_STR = apexStr_new("==", 2);
     NOT_EQUAL_STR = apexStr_new("!=", 2);
     LESS_STR = apexStr_new("<", 1);
@@ -174,7 +179,6 @@ ApexString *get_token_str(TokenType type) {
     return apexStr_new(tk2str[type].str, tk2str[type].len);
 }
 
-
 /**
  * Initializes a Lexer with the given source code and filename.
  *
@@ -198,9 +202,8 @@ void init_lexer(Lexer *lexer, const char *filename, char *source) {
         lexer->length = strlen(source);
     }
     lexer->position = 0;
-    lexer->parsestate.lineno = 1;
-    lexer->parsestate.filename = filename;
-    lexer->parsestate.exit_on_error = true;
+    lexer->srcloc.lineno = 1;
+    lexer->srcloc.filename = filename;
 }
 
 void apexLex_feedline(Lexer *lexer, const char *line) {
@@ -212,7 +215,7 @@ void apexLex_feedline(Lexer *lexer, const char *line) {
         lexer->length = len;
     } else {
         size_t len = lexer->length + strlen(line);
-        char *source = apexMem_realloc(lexer->source, len + 1); // +1 for the null terminator
+        char *source = apexMem_realloc(lexer->source, len + 1);
         strcat(source, line);
         lexer->source = source;
         lexer->length = len;
@@ -235,7 +238,7 @@ Token *create_token(Lexer *lexer, TokenType type, ApexString *str) {
     Token *token = apexMem_alloc(sizeof(Token));
     token->type = type;
     token->str = str;
-    token->parsestate = lexer->parsestate;;
+    token->srcloc = lexer->srcloc;;
     return token;
 }
 
@@ -299,7 +302,7 @@ static char advance(Lexer *lexer) {
 static void skip_whitespace(Lexer *lexer) {
     while (isspace(peek(lexer))) {
         if (peek(lexer) == '\n') {
-            lexer->parsestate.lineno++;
+            lexer->srcloc.lineno++;
         }
         advance(lexer);
     }
@@ -473,7 +476,7 @@ static Token *scan_str(Lexer *lexer) {
     if (peek(lexer) == '"') {
         advance(lexer); // Consume closing quote.
     } else {
-        apexErr_syntax(lexer->parsestate, "unterminated string literal");
+        apexErr_syntax(lexer->srcloc, "unterminated string literal");
     }
     buffer[i] = '\0';
     
@@ -546,9 +549,23 @@ Token *get_next_token(Lexer *lexer) {
         }
         return create_token(lexer, TOKEN_MINUS, MINUS_STR);
     case '*': 
+        if (peek(lexer) == '=') {
+            advance(lexer);
+            return create_token(lexer, TOKEN_STAR_EQUAL, STAR_EQUAL_STR);
+        }
         return create_token(lexer, TOKEN_STAR, STAR_STR);
     case '/': 
+        if (peek(lexer) == '=') {
+            advance(lexer);
+            return create_token(lexer, TOKEN_SLASH_EQUAL, SLASH_EQUAL_STR);
+        }
         return create_token(lexer, TOKEN_SLASH, SLASH_STR);
+    case '%':
+        if (peek(lexer) == '=') {
+            advance(lexer);
+            return create_token(lexer, TOKEN_MOD_EQUAL, MOD_EQUAL_STR);
+        }
+        return create_token(lexer, TOKEN_PERCENT, MOD_STR);
     case '(': 
         return create_token(lexer, TOKEN_LPAREN, LPAREN_STR);
     case ')': 
@@ -601,6 +618,6 @@ Token *get_next_token(Lexer *lexer) {
         return create_token(lexer, TOKEN_COLON, COLON_STR);
     }
 
-    apexErr_syntax(lexer->parsestate, "unexpected character: '%c'", c);
+    apexErr_syntax(lexer->srcloc, "unexpected character: '%c'", c);
     return NULL;
 }

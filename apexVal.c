@@ -1,10 +1,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include "apexVal.h"
-#include "vm.h"
-#include "mem.h"
+#include "apexVM.h"
+#include "apexMem.h"
 #include "apexStr.h"
-#include "error.h"
+#include "apexErr.h"
+#include "apexUtil.h"
 
 /**
  * Returns a string representation of an ApexValue type.
@@ -63,30 +64,21 @@ const char *apexVal_typestr(ApexValue value) {
 #define ARR_LOAD_FACTOR 0.75
 #define OBJ_LOAD_FACTOR 0.75
 
-static unsigned int hash_string(const char *str) {
-    unsigned int hash = 0;
-    while (*str) {
-        hash = (hash << 5) + hash + (unsigned char)(*str);
-        str++;
-    }
-    return hash;
-}
-
 /**
- * Converts a Fn to its string representation.
+ * Converts a ApexFn to its string representation.
  *
- * This function takes a pointer to a Fn and returns a string representation of
+ * This function takes a pointer to a ApexFn and returns a string representation of
  * the function, formatted as "[function <name> at addr <addr>]".
- * @param fn The pointer to the Fn to convert.
+ * @param fn The pointer to the ApexFn to convert.
  * @return A char pointer to the string representation of the function.
  */
-static char *fntostr(Fn *fn) {
+static char *fntostr(ApexFn *fn) {
     char addrstr[20];
     snprintf(addrstr, sizeof(addrstr), "%d", fn->addr);
-    size_t n = 20 + strlen(fn->name) + strlen(addrstr);
-    char *str = apexMem_alloc(n + 1);
-    snprintf(str, n + 1, "[function %s at addr %d]", fn->name, fn->addr);
-    return apexStr_save(str, n)->value;
+    size_t len = 20 + strlen(fn->name) + strlen(addrstr);
+    char *str = apexMem_alloc(len + 1);
+    snprintf(str, len + 1, "[function %s at addr %d]", fn->name, fn->addr);
+    return apexStr_save(str, len)->value;
 }
 
 /**
@@ -154,9 +146,9 @@ static char *objtostr(ApexObject *obj) {
 }
 
 /**
- * Converts an Array to its string representation.
+ * Converts an ApexArray to its string representation.
  *
- * This function takes a pointer to an Array and converts it to a string
+ * This function takes a pointer to an ApexArray and converts it to a string
  * representation, formatted as a list of key-value pairs. The string
  * representation starts and ends with square brackets, with key-value pairs
  * separated by commas. Each key-value pair is represented as "key => value".
@@ -165,12 +157,12 @@ static char *objtostr(ApexObject *obj) {
  *
  * If the array is empty, the function returns a string containing "[]".
  *
- * @param arr A pointer to the Array to convert to a string.
- * @return A char pointer to the string representation of the Array.
+ * @param arr A pointer to the ApexArray to convert to a string.
+ * @return A char pointer to the string representation of the ApexArray.
  */
-static char *arrtostr(Array *arr) {
+static char *arrtostr(ApexArray *arr) {
     char *str = apexMem_alloc(128);
-    int n = 1; 
+    int len = 1; 
     int size = 128;
     
     if (arr->entry_count == 0) {
@@ -194,7 +186,7 @@ static char *arrtostr(Array *arr) {
 
             int elen = (is_key_string ? 2 : 0) + keylen + 4 +
                        (is_val_string ? 2 : 0) + vallen;
-            int nspace = n + elen + (i > 0 ? 2 : 0);
+            int nspace = len + elen + (i > 0 ? 2 : 0);
 
             if (nspace >= size) {
                 while (nspace >= size) {
@@ -203,43 +195,43 @@ static char *arrtostr(Array *arr) {
                 str = apexMem_realloc(str, size);
             }
 
-            if (n > 1) {
+            if (len > 1) {
                 strcat(str, ", ");
-                n += 2;
+                len += 2;
             }
             if (is_key_string) {
-                str[n++] = '"';
-                strncpy(&str[n], keystr, keylen);
-                n += keylen;
-                str[n++] = '"';
+                str[len++] = '"';
+                strncpy(&str[len], keystr, keylen);
+                len += keylen;
+                str[len++] = '"';
             } else {
-                strncpy(&str[n], keystr, keylen);
-                n += keylen;
+                strncpy(&str[len], keystr, keylen);
+                len += keylen;
             }
-            memcpy(&str[n], " => ", 4);
-            n += 4;
+            memcpy(&str[len], " => ", 4);
+            len += 4;
             if (is_val_string) {
-                str[n++] = '"';
-                strncpy(&str[n], valstr, vallen);
-                n += vallen;
-                str[n++] = '"';
+                str[len++] = '"';
+                strncpy(&str[len], valstr, vallen);
+                len += vallen;
+                str[len++] = '"';
             } else {
-                strncpy(&str[n], valstr, vallen);
-                n += vallen;
+                strncpy(&str[len], valstr, vallen);
+                len += vallen;
             }
-            str[n] = '\0';
+            str[len] = '\0';
             entry = entry->next;
         }
     }
 
-    if (n + 1 >= size) {
+    if (len + 1 >= size) {
         size += 1;
         str = apexMem_realloc(str, size);
     }
-    str[n++] = ']';
-    str[n] = '\0';
+    str[len++] = ']';
+    str[len] = '\0';
 
-    return apexStr_save(str, n)->value;
+    return apexStr_save(str, len)->value;
 }
 
 /**
@@ -326,7 +318,7 @@ static unsigned int get_array_index(const ApexValue key) {
     case APEX_VAL_INT:
         return key.intval;
     case APEX_VAL_STR:
-        return hash_string(key.strval->value);
+        return apexUtil_hash(key.strval->value);
     case APEX_VAL_BOOL:
         return (unsigned int)key.boolval;
     case APEX_VAL_FLT: {
@@ -458,7 +450,7 @@ void apexVal_release(ApexValue value) {
 /**
  * Initializes a new function with the given name, parameters, and address.
  *
- * This function allocates a new Fn structure and assigns it the given name,
+ * This function allocates a new ApexFn structure and assigns it the given name,
  * parameters, and address. The reference count of the new function is set to
  * zero.
  *
@@ -467,10 +459,10 @@ void apexVal_release(ApexValue value) {
  *               function.
  * @param argc The number of parameters in the new function.
  * @param addr The address in the instruction chunk of the new function.
- * @return A pointer to the newly allocated Fn.
+ * @return A pointer to the newly allocated ApexFn.
  */
-Fn *apexVal_newfn(const char *name, const char **params, int argc, int addr) {
-    Fn *fn = apexMem_alloc(sizeof(Fn));
+ApexFn *apexVal_newfn(const char *name, const char **params, int argc, int addr) {
+    ApexFn *fn = apexMem_alloc(sizeof(ApexFn));
     fn->name = name;
     fn->argc = argc;
     fn->params = params;
@@ -508,8 +500,8 @@ ApexCfn apexVal_newcfn(char *name, int argc, int (*fn)(ApexVM *)) {
  *
  * @return A pointer to the newly created array.
  */
-Array *apexVal_newarray(void) {
-    Array *array = apexMem_alloc(sizeof(Array));
+ApexArray *apexVal_newarray(void) {
+    ApexArray *array = apexMem_alloc(sizeof(ApexArray));
     array->entries = apexMem_calloc(sizeof(ArrayEntry), ARR_INIT_SIZE);
     array->iter = apexMem_calloc(sizeof(ArrayEntry), ARR_INIT_SIZE);
     array->entry_size = ARR_INIT_SIZE;
@@ -535,7 +527,7 @@ ApexObject *apexVal_newobject(const char *name) {
     ApexObject *object = apexMem_alloc(sizeof(ApexObject));
     object->entries = apexMem_calloc(sizeof(ApexObjectEntry), OBJ_INIT_SIZE);
     object->size = OBJ_INIT_SIZE;
-    object->n = 0;
+    object->count = 0;
     object->refcount = 0;
     object->name = name;
     return object;
@@ -550,7 +542,7 @@ ApexObject *apexVal_newobject(const char *name) {
  *
  * @param array The array to free.
  */
-void apexVal_freearray(Array *array) {
+void apexVal_freearray(ApexArray *array) {
     for (int i = 0; i < array->entry_size; i++) {
         ArrayEntry *entry = array->entries[i];
         while (entry) {
@@ -600,7 +592,7 @@ void apexVal_freeobject(ApexObject *object) {
  *
  * @param array A pointer to the array to resize.
  */
-static void array_resize_entries(Array *array) {
+static void array_resize_entries(ApexArray *array) {
     int new_size = array->entry_size * 2;
     ArrayEntry **new_entries = apexMem_calloc(new_size, sizeof(ApexObjectEntry *));
     for (int i = 0; i < array->entry_size; i++) {
@@ -629,7 +621,7 @@ static void array_resize_entries(Array *array) {
  *
  * @param array A pointer to the array whose iterator is to be resized.
  */
-static void array_resize_iter(Array *array) {
+static void array_resize_iter(ApexArray *array) {
     int new_size = array->iter_size * 2;
     ArrayEntry **new_iter = apexMem_calloc(new_size, sizeof(ApexObjectEntry *));
     for (int i = 0; i < array->iter_count; i++) {
@@ -657,7 +649,7 @@ static void object_resize(ApexObject *object) {
     for (int i = 0; i < object->size; i++) {
         ApexObjectEntry *entry = object->entries[i];
         while (entry) {
-            unsigned int index = hash_string(entry->key) % new_size;
+            unsigned int index = apexUtil_hash(entry->key) % new_size;
             ApexObjectEntry *next = entry->next;
             entry->next = new_entries[index];
             new_entries[index] = entry;
@@ -681,7 +673,7 @@ static void object_resize(ApexObject *object) {
  * @param key The key to identify the value.
  * @param value The value to be associated with the key.
  */
-void apexVal_arrayset(Array *array, ApexValue key, ApexValue value) {
+void apexVal_arrayset(ApexArray *array, ApexValue key, ApexValue value) {
     unsigned int index = get_array_index(key) % array->entry_size;
     ArrayEntry *entry = array->entries[index];
 
@@ -703,11 +695,6 @@ void apexVal_arrayset(Array *array, ApexValue key, ApexValue value) {
     entry->value = value;
     entry->next = array->entries[index];
     array->entries[index] = entry;
-    if (entry->key.type == APEX_VAL_INT) {
-         printf("setting iter at %d to (key: %d, value: %d)\n", array->iter_count, entry->key.intval, entry->value.intval);
-    } else {
-        printf("setting iter at %d to (key: %s, value: %d)\n", array->iter_count, entry->key.strval->value, entry->value.intval);
-    }
     array->iter[array->iter_count++] = entry;
     array->entry_count++;
 
@@ -732,7 +719,7 @@ void apexVal_arrayset(Array *array, ApexValue key, ApexValue value) {
  * @param value The value to be associated with the key.
  */
 void apexVal_objectset(ApexObject *object, const char *key, ApexValue value) {
-    unsigned int index = hash_string(key) % object->size;
+    unsigned int index = apexUtil_hash(key) % object->size;
     ApexObjectEntry *entry = object->entries[index];
 
     while (entry) {
@@ -751,9 +738,9 @@ void apexVal_objectset(ApexObject *object, const char *key, ApexValue value) {
     entry->value = value;
     entry->next = object->entries[index];
     object->entries[index] = entry;
-    object->n++;
+    object->count++;
 
-    if ((float)object->n / object->size > OBJ_LOAD_FACTOR) {
+    if ((float)object->count / object->size > OBJ_LOAD_FACTOR) {
         object_resize(object);
     }
 }
@@ -800,7 +787,7 @@ ApexObject *apexVal_objectcpy(ApexObject *object) {
  * @param key The key for which the associated value is to be retrieved.
  * @return true if the key is found and the value is retrieved, otherwise false.
  */
-bool apexVal_arrayget(ApexValue *value, Array *array, const ApexValue key) {
+bool apexVal_arrayget(ApexValue *value, ApexArray *array, const ApexValue key) {
     unsigned int index = get_array_index(key) % array->entry_size;
     ArrayEntry *entry = array->entries[index];
 
@@ -829,7 +816,7 @@ bool apexVal_arrayget(ApexValue *value, Array *array, const ApexValue key) {
  * @return true if the key is found and the value is retrieved, otherwise false.
  */
 bool apexVal_objectget(ApexValue *value, ApexObject *object, const char *key) {
-    unsigned int index = hash_string(key) % object->size;
+    unsigned int index = apexUtil_hash(key) % object->size;
     ApexObjectEntry *entry = object->entries[index];
     
     while (entry) {
@@ -856,7 +843,7 @@ bool apexVal_objectget(ApexValue *value, ApexObject *object, const char *key) {
  *              will be deleted.
  * @param key The key identifying the key-value pair to remove.
  */
-void apexVal_arraydel(Array *array, const ApexValue key) {
+void apexVal_arraydel(ApexArray *array, const ApexValue key) {
     unsigned int index = get_array_index(key) % array->entry_size;
     ArrayEntry *prev = NULL;
     ArrayEntry *entry = array->entries[index];
@@ -957,7 +944,7 @@ ApexValue apexVal_makebool(bool value) {
  *
  * @return An ApexValue with the given function pointer.
  */
-ApexValue apexVal_makefn(Fn *fn) {
+ApexValue apexVal_makefn(ApexFn *fn) {
     ApexValue v;
     v.type = APEX_VAL_FN;
     v.fnval = fn;
@@ -974,7 +961,7 @@ ApexValue apexVal_makefn(Fn *fn) {
  *
  * @return An ApexValue with the given array.
  */
-ApexValue apexVal_makearr(Array *arr) {
+ApexValue apexVal_makearr(ApexArray *arr) {
     ApexValue v;
     v.type = APEX_VAL_ARR;
     v.arrval = arr;
@@ -1075,7 +1062,7 @@ ApexValue apexVal_makenull(void) {
  * @return The length of the array.
  */
 int apexVal_arrlen(ApexValue value) {
-    Array *arr = value.arrval;
+    ApexArray *arr = value.arrval;
     return arr->entry_count;
 }
 

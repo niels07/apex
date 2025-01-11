@@ -1,7 +1,7 @@
 #ifndef LIB_H
 #define LIB_H
 
-#include "vm.h"
+#include "apexVM.h"
 
 typedef struct {
     char *name;
@@ -12,7 +12,7 @@ typedef struct {
 typedef struct ApexLib {
     char *name;
     ApexLibFn fn;   
-    int n; 
+    int argc; 
 } ApexLib;
 
 #define apex_regfn(name, fn, argc) { name, fn, argc }

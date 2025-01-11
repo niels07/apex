@@ -3,9 +3,9 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <string.h>
-#include "vm.h"
-#include "parser.h"
-#include "error.h"
+#include "apexVM.h"
+#include "apexParse.h"
+#include "apexErr.h"
 
 /**
  * Prints an error message to stderr with the given error type and format
@@ -15,7 +15,7 @@
  * "Runtime Error: ", "Type Error: ", or "Memory Error: " depending on the
  * given error type.
  *
- * If the given ParseState has a non-zero line number, the error message will
+ * If the given SrcLoc has a non-zero line number, the error message will
  * include the line number and filename. Otherwise, only a colon will be
  * printed.
  *
@@ -25,14 +25,14 @@
  * If errno is non-zero, the error message will include the error string for
  * the current errno.
  */
-void apexErr_error(ParseState parsestate, const char *fmt, ...) {
+void apexErr_error(SrcLoc srcloc, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     fprintf(stderr, "error");
-    if (parsestate.lineno && parsestate.filename) {
+    if (srcloc.lineno && srcloc.filename) {
         fprintf(stderr,"(line %d, file %s): ", 
-        parsestate.lineno, 
-        parsestate.filename);
+        srcloc.lineno, 
+        srcloc.filename);
     } else {
         fprintf(stderr, ": ");
     }
@@ -64,7 +64,7 @@ void apexErr_trace(ApexVM *vm) {
         fprintf(
             stderr, "  at %s (line %d) in %s\n",
             frame->fn_name ? frame->fn_name : "<main>",
-            frame->parsestate.lineno,
+            frame->srcloc.lineno,
             i == 0 ? "<main>" : frame->fn_name);
     }
 }

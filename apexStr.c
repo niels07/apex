@@ -3,14 +3,16 @@
 #include <string.h>
 #include <stdbool.h>
 #include "apexStr.h"
-#include "mem.h"
+#include "apexMem.h"
 #include "apexVal.h"
-#include "util.h"
+#include "apexUtil.h"
 
+#define INIT_STRING_TABLE_SIZE 32
+#define STRING_TABLE_LOAD_FACTOR 0.75
 
-#define TABLE_SIZE 1024
-
-static ApexString *string_table[TABLE_SIZE];
+static ApexString **string_table;
+static size_t string_table_size = INIT_STRING_TABLE_SIZE;
+static size_t string_table_count = 0;
 
 /**
  * Computes a hash value for a given string.
@@ -25,14 +27,14 @@ static ApexString *string_table[TABLE_SIZE];
  * @param len The length of the input string.
  * @return An unsigned integer representing the hash value of the input string.
  */
-unsigned int hash_string(const char *str, size_t len) {
+static unsigned int hash_string(const char *str, size_t len) {
     unsigned int h = (unsigned int)len; 
     size_t step = (len >> 5) + 1;
     size_t i;
     for (i = 0; i < len; i += step) {
         h = h ^ ((h << 5) + (h >> 2) + (unsigned char)str[i]);
     }
-    return h % TABLE_SIZE;
+    return h;
 }
 
 /**
@@ -41,13 +43,36 @@ unsigned int hash_string(const char *str, size_t len) {
  * This function initializes the string table by setting all of its entries to
  * NULL. This is called once, at the beginning of the program.
  */
-void init_string_table(void) {
-    int i;
-    for (i = 0; i < TABLE_SIZE; i++) {
-        string_table[i] = NULL;
-    }
+void apexStr_inittable(void) {
+    string_table = apexMem_calloc(INIT_STRING_TABLE_SIZE, sizeof(ApexString *));
 }
 
+/**
+ * Resizes the string table to twice its current size.
+ *
+ * This function is called when the load factor of the string table exceeds a
+ * certain threshold (75%). It allocates a new array of strings with twice the
+ * size of the current one, and rehashes all the strings in the table to their new
+ * positions in the new array. Finally, it frees the old array and sets the
+ * string table's size to the new size.
+ */
+static void resize_string_table(void) {
+    int new_size = string_table_size * 2;
+    ApexString **new_table = apexMem_calloc(new_size, sizeof(ApexString *));
+    for (size_t i = 0; i < string_table_size; i++) {
+        ApexString *str = string_table[i];
+        while (str) {
+            unsigned int index = hash_string(str->value, str->len) % new_size;
+            ApexString *next = str->next;
+            str->next = new_table[index];
+            new_table[index] = str;
+            str = next;
+        }
+    }
+    free(string_table);
+    string_table = new_table;
+    string_table_size = new_size;
+}
 
 /**
  * Saves a string in the string table.
@@ -59,16 +84,16 @@ void init_string_table(void) {
  * table with the given string and length, and the new entry is returned.
  *
  * @param str The input string to be saved in the string table.
- * @param n The length of the input string.
+ * @param len The length of the input string.
  * @return A pointer to the ApexString structure representing the saved string
  *         in the string table.
  */
-ApexString *apexStr_save(char *str, size_t n) {    
-    unsigned int index = hash_string(str, n);
+ApexString *apexStr_save(char *str, size_t len) {    
+    unsigned int index = hash_string(str, len) % string_table_size;
     ApexString *entry = string_table[index];
 
     while (entry != NULL) {
-        if (entry->len == n && strncmp(entry->value, str, n) == 0) {
+        if (entry->len == len && strncmp(entry->value, str, len) == 0) {
             free(str);
             return entry;
         }
@@ -77,10 +102,14 @@ ApexString *apexStr_save(char *str, size_t n) {
 
     ApexString *new_entry = apexMem_alloc(sizeof(ApexString));
     new_entry->value = str;
-    new_entry->len = n;
-
-    new_entry->next = string_table[index];
+    new_entry->len = len;
+    new_entry->next = string_table[index];    
     string_table[index] = new_entry;
+    string_table_count++;
+
+    if ((float)string_table_count / string_table_size > STRING_TABLE_LOAD_FACTOR) {
+        resize_string_table();
+    }
 
     return new_entry;
 }
@@ -94,28 +123,32 @@ ApexString *apexStr_save(char *str, size_t n) {
  * with a size of n+1 to account for the null-terminator.
  *
  * @param str The string to add to the table.
- * @param n The length of the string.
+ * @param len The length of the string.
  * @return A pointer to the newly allocated string in the string table.
  */
-ApexString *apexStr_new(const char *str, size_t n) {
-    unsigned int index = hash_string(str, n);
+ApexString *apexStr_new(const char *str, size_t len) {
+    unsigned int index = hash_string(str, len) % string_table_size;
     ApexString *entry = string_table[index];
 
-    while (entry != NULL) {
-        if (entry->len == n && strncmp(entry->value, str, n) == 0) {
+    while (entry) {
+        if (entry->len == len && strncmp(entry->value, str, len) == 0) {
             return entry;
         }
         entry = entry->next;
     }
 
     ApexString *new_entry = apexMem_alloc(sizeof(ApexString));
-    new_entry->value = apexMem_alloc(n + 1);
-    memcpy(new_entry->value, str, n);
-    new_entry->value[n] = '\0';
-    new_entry->len = n;
-
+    new_entry->value = apexMem_alloc(len + 1);
+    memcpy(new_entry->value, str, len);
+    new_entry->value[len] = '\0';
+    new_entry->len = len;
     new_entry->next = string_table[index];
     string_table[index] = new_entry;
+    string_table_count++;
+
+    if ((float)string_table_count / string_table_size > STRING_TABLE_LOAD_FACTOR) {
+        resize_string_table();
+    }
 
     return new_entry;
 }
@@ -154,9 +187,8 @@ ApexString *apexStr_cat(ApexString *str1, ApexString *str2) {
  * freeing the memory allocated for the string itself and the String structure
  * that holds it. It then sets the entry in the table to NULL.
  */
-void free_string_table(void) {
-    int i;
-    for (i = 0; i < TABLE_SIZE; i++) {
+void apexStr_freetable(void) {
+    for (size_t i = 0; i < string_table_size; i++) {
         ApexString *entry = string_table[i];
         while (entry != NULL) {
             ApexString *next = entry->next;

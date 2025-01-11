@@ -1,10 +1,9 @@
-#ifndef PARSER_H
-#define PARSER_H
+#ifndef APEX_PARSE_H
+#define APEX_PARSE_H
 
 #include <stdbool.h>
-#include "ast.h"
-#include "token.h"
-#include "lexer.h"
+#include "apexAST.h"
+#include "apexLex.h"
 
 typedef struct {
     Lexer *lexer;

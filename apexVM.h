@@ -7,8 +7,8 @@
 
 #include <stdbool.h>
 #include "apexVal.h"
-#include "symbol.h"
-#include "srcloc.h"
+#include "apexSym.h"
+#include "apexLex.h"
 
 typedef enum {
     OP_PUSH_INT,
@@ -24,6 +24,7 @@ typedef enum {
     OP_SUB,
     OP_MUL,
     OP_DIV,
+    OP_MOD,
     OP_PRE_INC_LOCAL,
     OP_POST_INC_LOCAL,
     OP_PRE_INC_GLOBAL,
@@ -65,18 +66,18 @@ typedef enum {
 
 typedef struct {
     const char *fn_name;
-    ParseState parsestate;
+    SrcLoc srcloc;
 } CallFrame;
 
 typedef struct {
     OpCode opcode;
     ApexValue value;
-    ParseState parsestate;
+    SrcLoc srcloc;
 } Ins;
 
 typedef struct {
     Ins *ins;
-    int ins_n;
+    int ins_count;
     int ins_size;
 } Chunk;
 
@@ -92,7 +93,7 @@ typedef struct ApexVM {
     int ip;
     int loop_start;
     int loop_end;
-    ParseState parsestate;
+    SrcLoc srcloc;
     SymbolTable global_table;
     ScopeStack local_scopes;
 } ApexVM;

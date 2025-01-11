@@ -1,5 +1,5 @@
 #include <stdlib.h>
-#include "error.h"
+#include "apexErr.h"
 
 /**
  * Allocate memory of the given size, or abort if out of memory.
