@@ -378,6 +378,9 @@ static Token *scan_num(Lexer *lexer) {
 static Token *scan_ident(Lexer *lexer) {
     int start = lexer->position - 1;
 
+    if (peek(lexer) == '@') {
+        advance(lexer);
+    }
     while (isalnum(peek(lexer)) || peek(lexer) == '_') {
         advance(lexer);
     }
@@ -465,8 +468,8 @@ static Token *scan_str(Lexer *lexer) {
                 buffer[i++] = '"';
                 break;
             default:                
+                buffer[i++] = '\\';
                 buffer[i++] = next;
-                break;
             }
         } else {
             buffer[i++] = c;
@@ -510,7 +513,7 @@ Token *get_next_token(Lexer *lexer) {
 
     char c = advance(lexer);
 
-    if (isalpha(c)) {
+    if (isalpha(c) || c == '@') {
         return scan_ident(lexer);
     }
     if (isdigit(c)) {

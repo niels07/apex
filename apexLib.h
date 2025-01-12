@@ -1,11 +1,11 @@
-#ifndef LIB_H
-#define LIB_H
+#ifndef APEX_LIB_H
+#define APEX_LIB_H
 
 #include "apexVM.h"
 
 typedef struct {
     char *name;
-    int (*fn)(ApexVM *);
+    int (*fn)(ApexVM *, int);
     int argc;
 } ApexLibFn;
 

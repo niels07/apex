@@ -99,11 +99,13 @@ typedef struct ApexVM {
 } ApexVM;
 
 extern void apexVM_pushval(ApexVM *vm, ApexValue value);
-extern void apexVM_pushstr(ApexVM *vm, const char *str);
+extern void apexVM_pushstr(ApexVM *vm, ApexString *str);
 extern void apexVM_pushint(ApexVM *vm, int i);
 extern void apexVM_pushflt(ApexVM *vm, float flt);
 extern void apexVM_pushdbl(ApexVM *vm, double dbl);
 extern void apexVM_pushbool(ApexVM *vm, bool b);
+extern void apexVM_pusharr(ApexVM *vm, ApexArray *arr);
+extern void apexVM_pushnull(ApexVM *vm);
 extern ApexValue apexVM_pop(ApexVM *vm);
 extern ApexValue apexVM_peek(ApexVM *vm, int offset);
 extern void print_vm_instructions(ApexVM *vm);

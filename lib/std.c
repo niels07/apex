@@ -7,8 +7,9 @@
 #include "apexUtil.h"
 #include "apexErr.h"
 #include "apexLib.h"
+#include "apexStr.h"
 
-int std_int(ApexVM *vm) {
+int std_int(ApexVM *vm, int argc) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_BOOL:
@@ -45,14 +46,14 @@ int std_int(ApexVM *vm) {
     return 0;
 }
 
-int std_str(ApexVM *vm) {
+int std_str(ApexVM *vm, int argc) {
     ApexValue value = apexVM_pop(vm);
-    char *str = apexVal_tostr(value);
+    ApexString *str = apexVal_tostr(value);
     apexVM_pushstr(vm, str);
     return 0;
 }
 
-int std_flt(ApexVM *vm) {
+int std_flt(ApexVM *vm, int argc) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_INT:
@@ -85,7 +86,7 @@ int std_flt(ApexVM *vm) {
     return 0;
 }
 
-int std_dbl(ApexVM *vm) {
+int std_dbl(ApexVM *vm, int argc) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_INT:
@@ -117,7 +118,7 @@ int std_dbl(ApexVM *vm) {
     return 0;
 }
 
-int std_bool(ApexVM *vm) {
+int std_bool(ApexVM *vm, int argc) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_INT:
@@ -142,7 +143,7 @@ int std_bool(ApexVM *vm) {
     return 0;
 }
 
-static int std_len(ApexVM *vm) {
+static int std_len(ApexVM *vm, int argc) {
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_ARR:

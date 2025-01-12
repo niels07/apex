@@ -208,7 +208,7 @@ static void cleanup(ApexVM *vm, AST *ast, Parser *parser, char *source) {
 int main(int argc, char *argv[]) {
     if (argc == 1) {
         start_repl();
-    } else if (argc == 2) {
+    } else if (argc >= 2) {
         char *source = read_file(argv[1]);
         apexStr_inittable();
         apexLib_init();
@@ -222,12 +222,26 @@ int main(int argc, char *argv[]) {
 
         ApexVM vm;
         init_vm(&vm);
+
+        ApexArray *args = apexVal_newarray();
+        int argi = 0;
+        for (int i = 2; i < argc; i++) {
+            ApexValue arg_index = apexVal_makeint(argi++);
+            ApexValue arg_value = apexVal_makestr(apexStr_new(argv[i], strlen(argv[i])));
+            apexVal_arrayset(args, arg_index, arg_value);
+        }
+
+        apexSym_setglobal(
+            &vm.global_table, 
+            apexStr_new("@args", 5)->value, 
+            apexVal_makearr(args));
         
         AST *ast = parse_program(&parser);    
         if (!ast) {
             cleanup(&vm, ast, &parser, source);
             return EXIT_FAILURE;
         }
+        
         print_ast(ast, 0);
         if (!apexCode_compile(&vm, ast)) {
             cleanup(&vm, ast, &parser, source);

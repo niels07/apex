@@ -344,9 +344,8 @@ void apexVM_pushval(ApexVM *vm, ApexValue value) {
  * @param vm A pointer to the virtual machine to use.
  * @param str The string value to push.
  */
-void apexVM_pushstr(ApexVM *vm, const char *str) {
-    ApexString *s = apexStr_new(str, strlen(str));
-    stack_push(vm, apexVal_makestr(s));
+void apexVM_pushstr(ApexVM *vm, ApexString *str) {
+    stack_push(vm, apexVal_makestr(str));
 }
 
 /**
@@ -387,6 +386,24 @@ void apexVM_pushdbl(ApexVM *vm, double dbl) {
  */
 void apexVM_pushbool(ApexVM *vm, bool b) {
     stack_push(vm, apexVal_makebool(b));
+}
+
+/**
+ * Pushes an array value onto the stack.
+ *
+ * This function takes a pointer to an ApexVM and an ApexArray, creates an
+ * ApexValue with the array type from the given array, and pushes the value
+ * onto the stack.
+ *
+ * @param vm A pointer to the virtual machine to use.
+ * @param arr The ApexArray to push.
+ */
+void apexVM_pusharr(ApexVM *vm, ApexArray *arr) {
+    stack_push(vm, apexVal_makearr(arr));
+}
+
+void apexVM_pushnull(ApexVM *vm) {
+    stack_push(vm, apexVal_makenull());
 }
 
 /**
@@ -990,11 +1007,11 @@ bool vm_dispatch(ApexVM *vm) {
 
             if (fnval.type == APEX_VAL_CFN) {
                 ApexCfn cfn = fnval.cfnval;
-                if (cfn.argc != argc) {
+                if (cfn.argc != -1 && cfn.argc != argc) {
                     apexErr_runtime(vm, "expected %d arguments, got %d", cfn.argc, argc);
                     return false;
                 }
-                if (cfn.fn(vm) != 0) {
+                if (cfn.fn(vm, argc) != 0) {
                     return false;
                 }
                 break;
@@ -1127,7 +1144,7 @@ bool vm_dispatch(ApexVM *vm) {
             case APEX_VAL_ARR:
                 ApexValue value;
                 if (!apexVal_arrayget(&value, array.arrval, index)) {
-                    char *indexstr = apexVal_tostr(index);
+                    char *indexstr = apexVal_tostr(index)->value;
                     apexErr_runtime(vm, "invalid array index: %s", indexstr);
                     return false;
                 }
@@ -1248,11 +1265,11 @@ bool vm_dispatch(ApexVM *vm) {
 
             if (fnval.type == APEX_VAL_CFN) {
                 ApexCfn cfn = fnval.cfnval;
-                if (argc != cfn.argc) {
+                if (cfn.argc != -1 && argc != cfn.argc) {
                     apexErr_runtime(vm, "expected %d arguments, got %d", cfn.argc, argc);
                     return false;
                 }
-                if (cfn.fn(vm) != 0) {
+                if (cfn.fn(vm, argc) != 0) {
                     return false;
                 }
                 if (vm->stack_top > 0 && stack_top(vm).type == APEX_VAL_OBJ) {
@@ -1355,7 +1372,7 @@ bool vm_dispatch(ApexVM *vm) {
             ApexValue array = stack_pop(vm); \
             ApexValue value; \
             if (!apexVal_arrayget(&value, array.arrval, index)) { \
-                char *indexstr = apexVal_tostr(index); \
+                char *indexstr = apexVal_tostr(index)->value; \
                 apexErr_runtime(vm, "invalid array index: %s", indexstr); \
                 return false; \
             }
@@ -1595,13 +1612,15 @@ bool vm_dispatch(ApexVM *vm) {
                 return false;
             }
             int argc = ins->value.intval;
-            if (argc != lib_fn.argc) {
+            if (lib_fn.argc != - 1 && argc != lib_fn.argc) {
                 apexErr_runtime(vm, 
                     "function '%s:%s' expects %d arguments, got %d", 
                     lib_name, fn_name, lib_fn.argc, argc);
                 return false;
             }
-            lib_fn.fn(vm);
+            if (lib_fn.fn(vm, argc) == 1) {
+                return false;
+            }
             break;
         }
         case OP_FUNCTION_START:

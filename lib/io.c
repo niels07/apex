@@ -7,25 +7,25 @@
 #include "apexLib.h"
 #include "apexErr.h"
 
-int io_write(ApexVM *vm) {
+int io_write(ApexVM *vm, int argc) {
     ApexValue value = apexVM_pop(vm);
-    printf("%s", apexVal_tostr(value));
+    printf("%s", apexVal_tostr(value)->value);
     return 0;
 }
 
-int io_print(ApexVM *vm) {
-    io_write(vm);
+int io_print(ApexVM *vm, int argc) {
+    io_write(vm, argc);
     printf("\n");
     return 0;
 }
 
-int io_read(ApexVM *vm) {
+int io_read(ApexVM *vm, int argc) {
     ApexString *line = apexUtil_readline(stdin);
     apexVM_pushval(vm, apexVal_makestr(line));
     return 0;
 }
 
-int file_write(ApexVM *vm) {
+int file_write(ApexVM *vm, int argc) {
     ApexValue objval = apexVM_pop(vm);
     ApexValue text = apexVM_pop(vm);    
     ApexObject *file_obj = objval.objval;
@@ -47,7 +47,7 @@ int file_write(ApexVM *vm) {
     return 0;
 }
 
-int file_close(ApexVM *vm) {
+int file_close(ApexVM *vm, int argc) {
     ApexValue objval = apexVM_pop(vm);
     ApexObject *file_obj = objval.objval;
 
@@ -71,7 +71,7 @@ int file_close(ApexVM *vm) {
     return 0;
 }
 
-int io_open(ApexVM *vm) {
+int io_open(ApexVM *vm, int argc) {
     ApexValue mode = apexVM_pop(vm);
     ApexValue filename = apexVM_pop(vm);    
     FILE *file = fopen(apexVal_str(filename)->value, apexVal_str(mode)->value);

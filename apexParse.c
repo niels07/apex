@@ -613,6 +613,7 @@ static AST *parse_unary(Parser *parser) {
             break;
         }
         node = parse_primary(parser);
+        if (!node) return NULL;
         return CREATE_AST_ZERO(
             node_type, NULL, node, 
             parser->current_token->srcloc);
@@ -623,11 +624,13 @@ static AST *parse_unary(Parser *parser) {
         TokenType operator = parser->current_token->type;
         CONSUME(parser, operator);
         node = parse_primary(parser);
+        if (!node) return NULL;
         return CREATE_AST_ZERO(
             operator == TOKEN_PLUS_PLUS ? AST_UNARY_INC : AST_UNARY_DEC, 
             NULL, node, parser->current_token->srcloc);
     }
     node = parse_primary(parser);
+    if (!node) return NULL;
 
      if (parser->current_token->type == TOKEN_PLUS_PLUS || 
         parser->current_token->type == TOKEN_MINUS_MINUS) {
@@ -653,6 +656,7 @@ static AST *parse_unary(Parser *parser) {
  */
 static AST *parse_factor(Parser *parser) {
     AST *left = parse_unary(parser);
+    if (!left) return NULL;
     TokenType operator = parser->current_token->type;
     while (operator == TOKEN_STAR || 
            operator == TOKEN_SLASH ||
@@ -673,6 +677,7 @@ static AST *parse_factor(Parser *parser) {
         }
         CONSUME(parser, operator);
         AST *right = parse_unary(parser);
+        if (!right) return NULL;
         left = CREATE_AST_ZERO(
             node_type, left, right,
             parser->current_token->srcloc);
@@ -694,10 +699,12 @@ static AST *parse_factor(Parser *parser) {
  */
 static AST *parse_bitwise(Parser *parser) {
     AST *left = parse_term(parser);
+    if (!left) return NULL;
     TokenType operator = parser->current_token->type;
     while (operator == TOKEN_AMP ||operator == TOKEN_PIPE) {      
         CONSUME(parser, operator);
         AST *right = parse_factor(parser);
+        if (!right) return NULL;
         left = CREATE_AST_ZERO(
             operator == TOKEN_AMP ? AST_BIN_BITWISE_AND : AST_BIN_BITWISE_OR, 
             left, right, parser->current_token->srcloc);
@@ -719,12 +726,14 @@ static AST *parse_bitwise(Parser *parser) {
  */
 static AST *parse_term(Parser *parser) {
     AST *left = parse_factor(parser);
+    if (!left) return NULL;
     TokenType operator = parser->current_token->type;
 
     while (parser->current_token->type == TOKEN_PLUS || 
            parser->current_token->type == TOKEN_MINUS) {
         CONSUME(parser, operator);
         AST *right = parse_factor(parser);
+        if (!right) return NULL;
         left = CREATE_AST_ZERO(
             operator == TOKEN_PLUS ? AST_BIN_ADD : AST_BIN_SUB, 
             left, right, parser->current_token->srcloc);
@@ -747,6 +756,7 @@ static AST *parse_term(Parser *parser) {
  */
 static AST *parse_comparison(Parser *parser) {
     AST *left = parse_bitwise(parser);
+    if (!left) return NULL;
     TokenType operator = parser->current_token->type;
 
     while (operator == TOKEN_LESS || 
@@ -771,7 +781,8 @@ static AST *parse_comparison(Parser *parser) {
             break;
         }
         CONSUME(parser, operator);
-        AST *right = parse_bitwise(parser);        
+        AST *right = parse_bitwise(parser);   
+        if (!right) return NULL;   
         left = CREATE_AST_ZERO(
             node_type, left, right,
             parser->current_token->srcloc);
@@ -1248,6 +1259,7 @@ static AST *parse_for_statement(Parser *parser) {
     AST *initialization = NULL;
     if (parser->current_token->type != TOKEN_SEMICOLON) {
         initialization = parse_statement(parser);
+        if (!initialization) return NULL;
     } else {    
         CONSUME(parser, TOKEN_SEMICOLON);
     }
@@ -1255,12 +1267,14 @@ static AST *parse_for_statement(Parser *parser) {
     AST *condition = NULL;
     if (parser->current_token->type != TOKEN_SEMICOLON) {
         condition = parse_expression(parser);
+        if (!condition) return NULL;
     }
     CONSUME(parser, TOKEN_SEMICOLON);
     
     AST *increment = NULL;
     if (parser->current_token->type != TOKEN_RPAREN) {
         increment = parse_expression(parser);
+        if (!increment) return NULL;
     }
     CONSUME(parser, TOKEN_RPAREN);
 
@@ -1269,11 +1283,8 @@ static AST *parse_for_statement(Parser *parser) {
         body = parse_block(parser);
     } else {
         body = parse_statement(parser);
-    }
-    
-    if (!body && parser->allow_incomplete) {
-        return NULL;
-    }
+    }    
+    if (!body) return NULL;
 
     return CREATE_AST_AST(
         AST_FOR, initialization, condition, 
@@ -1563,6 +1574,7 @@ static AST *parse_ident_statement(Parser *parser) {
         stmt = parse_expression(parser);
         if (parser->current_token->type != TOKEN_SEMICOLON) {
             TOKEN_UNEXPECTED(parser, parser->current_token);
+            return NULL;
         }       
         CONSUME(parser, TOKEN_SEMICOLON); 
         return stmt;
@@ -1672,13 +1684,7 @@ AST *parse_program(Parser *parser) {
     AST *last_stmt = NULL;
     while (parser->current_token->type != TOKEN_EOF) {
         AST *stmt = parse_statement(parser);
-        if (!stmt) {
-            if (parser->allow_incomplete) {
-                return NULL;
-            }
-            continue;
-        }
-
+        if (!stmt) return NULL;
         if (stmt->type == AST_ERROR) {
             return stmt;
         }

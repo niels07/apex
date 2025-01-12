@@ -25,7 +25,7 @@ typedef enum {
 typedef struct {
     int argc;
     char *name;
-    int (*fn)(ApexVM *);
+    int (*fn)(ApexVM *, int);
 } ApexCfn;
 
 typedef struct {
@@ -96,9 +96,9 @@ struct ApexObject {
 #define apexVal_type(v) (v.type)
 
 extern ApexFn *apexVal_newfn(const char *name, char **params, int argc, bool have_variadic, int addr);
-extern ApexCfn apexVal_newcfn(char *name, int argc, int (*fn)(ApexVM *));
+extern ApexCfn apexVal_newcfn(char *name, int argc, int (*fn)(ApexVM *, int));
 extern const char *apexVal_typestr(ApexValue value);
-extern char *apexVal_tostr(ApexValue value);
+extern ApexString *apexVal_tostr(ApexValue value);
 extern ApexValue apexVal_makeint(int value);
 extern ApexValue apexVal_makeflt(float value);
 extern ApexValue apexVal_makedbl(double value);

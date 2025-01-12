@@ -72,13 +72,13 @@ const char *apexVal_typestr(ApexValue value) {
  * @param fn The pointer to the ApexFn to convert.
  * @return A char pointer to the string representation of the function.
  */
-static char *fntostr(ApexFn *fn) {
+static ApexString *fntostr(ApexFn *fn) {
     char addrstr[20];
     snprintf(addrstr, sizeof(addrstr), "%d", fn->addr);
     size_t len = 20 + strlen(fn->name) + strlen(addrstr);
     char *str = apexMem_alloc(len + 1);
     snprintf(str, len + 1, "[function %s at addr %d]", fn->name, fn->addr);
-    return apexStr_save(str, len)->value;
+    return apexStr_save(str, len);
 }
 
 /**
@@ -90,11 +90,11 @@ static char *fntostr(ApexFn *fn) {
  * @param fn The ApexCfn function pointer to convert.
  * @return A char pointer to the string representation of the C function.
  */
-static char *cfntostr(ApexCfn fn) {
+static ApexString *cfntostr(ApexCfn fn) {
     size_t size = 32 + strlen(fn.name);
     char *str = apexMem_alloc(size + 1);
     snprintf(str, size, "[cfunction %s: %p]", fn.name, fn.fn);
-    return apexStr_save(str, size)->value;
+    return apexStr_save(str, size);
 }
 
 /**
@@ -106,10 +106,10 @@ static char *cfntostr(ApexCfn fn) {
  * @param ptr The pointer to convert to a string representation.
  * @return A char pointer to the string representation of the pointer.
  */
-static char *ptrtostr(void *ptr) {
+static ApexString *ptrtostr(void *ptr) {
     char *str = apexMem_alloc(32);
     snprintf(str, 32, "[pointer %p]", ptr);
-    return apexStr_save(str, 20)->value;
+    return apexStr_save(str, 20);
 }
 
 /**
@@ -121,13 +121,12 @@ static char *ptrtostr(void *ptr) {
  * @param obj The pointer to the ApexObject to convert.
  * @return A char pointer to the string representation of the type.
  */
-static char *typetostr(ApexObject *obj) {
+static ApexString *typetostr(ApexObject *obj) {
     size_t len = strlen(obj->name) + 9;
     char *str = apexMem_alloc(len + 1);
     snprintf(str, len + 1, "[type %s]", obj->name);
-    return apexStr_save(str, len)->value;
+    return apexStr_save(str, len);
 }
-
 
 /**
  * Converts an ApexObject instance to its string representation.
@@ -138,11 +137,11 @@ static char *typetostr(ApexObject *obj) {
  * @param obj The pointer to the ApexObject to convert.
  * @return A char pointer to the string representation of the instance.
  */
-static char *objtostr(ApexObject *obj) {
+static ApexString *objtostr(ApexObject *obj) {
     size_t len = strlen(obj->name) + 14;
     char *str = apexMem_alloc(len + 1);
     snprintf(str, len + 1, "[instance of %s]", obj->name);
-    return apexStr_save(str, len)->value;
+    return apexStr_save(str, len);
 }
 
 /**
@@ -160,14 +159,14 @@ static char *objtostr(ApexObject *obj) {
  * @param arr A pointer to the ApexArray to convert to a string.
  * @return A char pointer to the string representation of the ApexArray.
  */
-static char *arrtostr(ApexArray *arr) {
+static ApexString *arrtostr(ApexArray *arr) {
     char *str = apexMem_alloc(128);
     int len = 1; 
     int size = 128;
     
     if (arr->entry_count == 0) {
         snprintf(str, size, "[]");
-        return apexStr_save(str, 2)->value;
+        return apexStr_save(str, 2);
     }
 
     str[0] = '[';
@@ -176,8 +175,8 @@ static char *arrtostr(ApexArray *arr) {
     for (int i = 0; i < arr->entry_size; i++) {
         ArrayEntry *entry = arr->entries[i];
         while (entry) {
-            char *keystr = apexVal_tostr(entry->key);
-            char *valstr = apexVal_tostr(entry->value);
+            char *keystr = apexVal_tostr(entry->key)->value;
+            char *valstr = apexVal_tostr(entry->value)->value;
 
             int keylen = strlen(keystr);
             int vallen = strlen(valstr);
@@ -231,7 +230,7 @@ static char *arrtostr(ApexArray *arr) {
     str[len++] = ']';
     str[len] = '\0';
 
-    return apexStr_save(str, len)->value;
+    return apexStr_save(str, len);
 }
 
 /**
@@ -251,28 +250,28 @@ static char *arrtostr(ApexArray *arr) {
  * @param value The ApexValue to convert to a string.
  * @return A char pointer to the string representation of the ApexValue.
  */
-char *apexVal_tostr(ApexValue value) {
+ApexString *apexVal_tostr(ApexValue value) {
     switch (value.type) {
     case APEX_VAL_INT: {
         char buf[12];
         sprintf(buf, "%d", value.intval);
-        return apexStr_val(buf, strlen(buf));
+        return apexStr_new(buf, strlen(buf));
     }
     case APEX_VAL_FLT: {
         char buf[48];
         sprintf(buf, "%.8g", apexVal_flt(value));
-        return apexStr_val(buf, strlen(buf));
+        return apexStr_new(buf, strlen(buf));
     }
     case APEX_VAL_DBL: {
         char buf[250];
         sprintf(buf, "%.17g", apexVal_dbl(value));
-        return apexStr_val(buf, strlen(buf));
+        return apexStr_new(buf, strlen(buf));
     }
     case APEX_VAL_STR:
-        return value.strval->value;
+        return value.strval;
 
     case APEX_VAL_BOOL:
-        return apexStr_val(value.boolval ? "true" : "false", value.boolval ? 4 : 5);
+        return apexStr_new(value.boolval ? "true" : "false", value.boolval ? 4 : 5);
 
     case APEX_VAL_FN:
         return fntostr(value.fnval);
@@ -293,7 +292,7 @@ char *apexVal_tostr(ApexValue value) {
         return ptrtostr(value.ptrval);
 
     case APEX_VAL_NULL:
-        return apexStr_val("null", 4);
+        return apexStr_new("null", 4);
     }
     return NULL;
 }
@@ -484,7 +483,7 @@ ApexFn *apexVal_newfn(const char *name, char **params, int argc, bool have_varia
  * @param fn The function pointer of the new ApexCfn.
  * @return A pointer to the newly allocated ApexCfn.
  */
-ApexCfn apexVal_newcfn(char *name, int argc, int (*fn)(ApexVM *)) {
+ApexCfn apexVal_newcfn(char *name, int argc, int (*fn)(ApexVM *, int)) {
     ApexCfn cfn;
     cfn.name = name;
     cfn.argc = argc;
