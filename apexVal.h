@@ -30,10 +30,11 @@ typedef struct {
 
 typedef struct {
     const char *name;
-    const char **params;
+    char **params;
     int argc;
     int addr;
     int refcount;
+    bool have_variadic;
 } ApexFn;
 
 typedef struct ApexArray ApexArray;
@@ -94,7 +95,7 @@ struct ApexObject {
 #define apexVal_fn(v) (v.fnval)
 #define apexVal_type(v) (v.type)
 
-extern ApexFn *apexVal_newfn(const char *name, const char **params, int argc, int addr);
+extern ApexFn *apexVal_newfn(const char *name, char **params, int argc, bool have_variadic, int addr);
 extern ApexCfn apexVal_newcfn(char *name, int argc, int (*fn)(ApexVM *));
 extern const char *apexVal_typestr(ApexValue value);
 extern char *apexVal_tostr(ApexValue value);

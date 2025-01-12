@@ -37,6 +37,7 @@ typedef enum {
     AST_ASSIGN_MOD,
     AST_LOGICAL_EXPR,
     AST_VAR,
+    AST_VARIADIC,
     AST_ASSIGNMENT,
     AST_BLOCK,
     AST_IF,

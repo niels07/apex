@@ -37,6 +37,7 @@ static const char *get_ast_node_type_name(ASTNodeType type) {
         case AST_ASSIGN_MOD: return "AST_ASSIGN_MOD";
         case AST_LOGICAL_EXPR: return "AST_LOGICAL_EXPR";
         case AST_VAR: return "AST_VARIABLE";
+        case AST_VARIADIC: return "AST_VARIADIC";
         case AST_ASSIGNMENT: return "AST_ASSIGNMENT";
         case AST_BLOCK: return "AST_BLOCK";
         case AST_IF: return "AST_IF";

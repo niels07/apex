@@ -1,3 +1,19 @@
-x = 5;
-x %= 10;
-io:print(x);
+Object = {};
+fn Object.new(a, b, *args) {
+    io:print(a);
+    io:print(b);
+    for (i = 0; i < std:len(args); i++) {
+        io:print(args[i]);
+    }
+}
+
+fn Object.foo(a, b, *args) {
+    io:print(a);
+    io:print(b);
+    for (i = 0; i < std:len(args); i++) {
+        io:print(args[i]);
+    } 
+}
+
+object = Object.new(1, 2, 3, 4, 5);
+object.foo(1, 2, 3, 4, 5);

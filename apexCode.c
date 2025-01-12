@@ -128,39 +128,47 @@ static void compile_variable(ApexVM *vm, AST *node, bool is_assignment) {
  * @return An array of strings containing the parameter names, or NULL if
  *         the parameter list is empty.
  */
-static const char **compile_parameter_list(AST *param_list, int *argc) {
+static char **compile_parameter_list(AST *param_list, int *argc, bool *have_variadic) {
     int pcount = 0;
     int psize = 8;
-    const char **params = apexMem_alloc(sizeof(char *) * psize);
+    char **params = apexMem_alloc(sizeof(char *) * psize);
 
     while (param_list) {
-         if (param_list->type == AST_BLOCK) {
+        if (param_list->type == AST_BLOCK) {
             break;
         } 
-        if (param_list->type == AST_VAR) {
-            const char *param_name = param_list->value.strval->value;
+        
+        if (param_list->type == AST_VAR || param_list->type == AST_VARIADIC) {
+            char *param_name = param_list->value.strval->value;
             if (pcount >= psize) {
                 psize *= 2;
                 params = apexMem_realloc(params, sizeof(char *) * psize);
             }
+            if (param_list->type == AST_VARIADIC) {
+                *have_variadic = true;
+            }
             params[pcount++] = param_name;
             break;
         } else if (param_list->type == AST_PARAMETER_LIST) {
-            AST *parameter = param_list->left;
-            const char *param_name = parameter->value.strval->value;
-            if (parameter->type != AST_VAR) {
-                apexErr_syntax(parameter->srcloc, "expected parameter to be a variable");
+            AST *param = param_list->left;
+            char *param_name = param->value.strval->value;
+            if (param->type != AST_VAR && param->type != AST_VARIADIC) {
+                apexErr_syntax(param->srcloc, "expected parameter to be a variable");
                 return NULL;
             }
             if (pcount >= psize) {
                 psize *= 2;
                 params = apexMem_realloc(params, sizeof(char *) * psize);
             }
+            if (param->type == AST_VARIADIC) {
+                *have_variadic = true;
+            }
             params[pcount++] = param_name;
 
             if (param_list->right && 
                (param_list->right->type == AST_PARAMETER_LIST ||
-                param_list->right->type == AST_VAR)) {
+                param_list->right->type == AST_VAR ||
+                param_list->right->type == AST_VARIADIC)) {
                 param_list = param_list->right;
             } else {
                 break;
@@ -306,11 +314,12 @@ static bool compile_function_declaration(ApexVM *vm, AST *node) {
         EMIT_OP(vm, OP_FUNCTION_START);
         push_scope(&vm->local_scopes);
         int argc = 0;
-        const char **params = compile_parameter_list(node->value.ast_node, &argc);
+        bool have_variadic;
+        char **params = compile_parameter_list(node->value.ast_node, &argc, &have_variadic);
         if (!params) {
             return false;
         }
-        ApexFn *fn = apexVal_newfn(fnname, params, argc, vm->chunk->ins_count);
+        ApexFn *fn = apexVal_newfn(fnname, params, argc, have_variadic, vm->chunk->ins_count);
         ApexValue value;
         if (!apexSym_getglobal(&value, &vm->global_table, objname)) {
             apexErr_syntax(node->srcloc, "object %s not found", objname);
@@ -332,19 +341,15 @@ static bool compile_function_declaration(ApexVM *vm, AST *node) {
     } else {
         const char *fnname = node->left->value.strval->value;
         int argc = 0;
+        bool have_variadic;
         vm->in_function = true;
         EMIT_OP(vm, OP_FUNCTION_START);
         push_scope(&vm->local_scopes);
-        const char **params = compile_parameter_list(node->value.ast_node, &argc);
+        char **params = compile_parameter_list(node->value.ast_node, &argc, &have_variadic);
         if (!params) {
             return false;
         }
-        ApexFn *fn = apexMem_alloc(sizeof(ApexFn));
-        fn->name = fnname;
-        fn->argc = argc;
-        fn->params = params;
-        fn->addr = vm->chunk->ins_count;
-        fn->refcount = 0;
+        ApexFn *fn = apexVal_newfn(fnname, params, argc, have_variadic, vm->chunk->ins_count);
         apexSym_setglobal(&vm->global_table, fnname, apexVal_makefn(fn));
         if (!compile_statement(vm, node->right)) { // function body
             return false;

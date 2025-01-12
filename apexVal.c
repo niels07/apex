@@ -461,13 +461,14 @@ void apexVal_release(ApexValue value) {
  * @param addr The address in the instruction chunk of the new function.
  * @return A pointer to the newly allocated ApexFn.
  */
-ApexFn *apexVal_newfn(const char *name, const char **params, int argc, int addr) {
+ApexFn *apexVal_newfn(const char *name, char **params, int argc, bool have_variadic, int addr) {
     ApexFn *fn = apexMem_alloc(sizeof(ApexFn));
     fn->name = name;
     fn->argc = argc;
     fn->params = params;
     fn->addr = addr;
     fn->refcount = 0;
+    fn->have_variadic = have_variadic;
     return fn;
 }
 

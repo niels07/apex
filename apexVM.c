@@ -1003,20 +1003,41 @@ bool vm_dispatch(ApexVM *vm) {
             int ret_addr = vm->ip;
             ApexFn *fn = fnval.fnval;
             
-            if (argc != fn->argc) {
+            if (fn->have_variadic) {
+                if (argc < fn->argc - 1) {
+                    apexErr_runtime(vm, "expected at least %d arguments, got %d", fn->argc, argc);
+                    return false;
+                }                
+            } else if (argc != fn->argc) {
                 apexErr_runtime(vm, "expected %d arguments, got %d", fn->argc, argc);
                 return false;
             }
 
             push_callframe(vm, fn->name, ins->srcloc);
-            push_scope(&vm->local_scopes);            
-            
-            for (int i = 0; i < fn->argc; i++) {
-                ApexValue arg = stack_pop(vm);
-                const char *name = fn->params[i];                
-                apexSym_setlocal(&vm->local_scopes, name, arg);
+            push_scope(&vm->local_scopes);
+
+            ApexArray *variadic_args = NULL;
+            int param_index = 0;
+            bool have_variadic = false;
+
+            if (fn->have_variadic) {
+                variadic_args = apexVal_newarray();
             }
 
+            int variadic_index = argc - fn->argc;
+
+            for (int i = 0; i < argc; i++) {
+                if (fn->have_variadic && argc - i >= fn->argc) {
+                    apexVal_arrayset(variadic_args, apexVal_makeint(variadic_index--), stack_pop(vm));
+                    have_variadic = true;
+                } else {
+                    if (have_variadic) {
+                        apexSym_setlocal(&vm->local_scopes, fn->params[param_index++], apexVal_makearr(variadic_args));
+                        have_variadic = false;
+                    }
+                    apexSym_setlocal(&vm->local_scopes, fn->params[param_index++], stack_pop(vm));
+                }
+            }
             stack_push(vm, apexVal_makeint(ret_addr));
             vm->ip = fn->addr;
             break;
@@ -1138,16 +1159,37 @@ bool vm_dispatch(ApexVM *vm) {
                 int ret_addr = vm->ip;
                 ApexFn *fn = newFnVal.fnval;
                 int argc = ins->value.intval;
-                if (argc != fn->argc) {
+                if (fn->have_variadic) {
+                    if (argc < fn->argc) {
+                        apexErr_runtime(vm, "expected at least %d arguments, got %d", fn->argc, argc);
+                        return false;
+                    }
+                } else if (argc != fn->argc) {
                     apexErr_runtime(vm, "expected %d arguments, got %d", fn->argc, argc);
                     return false;
                 }
                 push_callframe(vm, fn->name, ins->srcloc);
                 push_scope(&vm->local_scopes);
-                for (int i = 0; i < fn->argc; i++) {
-                    ApexValue arg = stack_pop(vm);
-                    const char *name = fn->params[i];                
-                    apexSym_setlocal(&vm->local_scopes, name, arg);
+
+                ApexArray *variadic_args = NULL;
+                int param_index = 0;
+                bool have_variadic = false;
+
+                if (fn->have_variadic) {
+                    variadic_args = apexVal_newarray();
+                }
+                int variadic_index = argc - fn->argc;
+                for (int i = 0; i < argc; i++) {
+                    if (fn->have_variadic && argc - i >= fn->argc) {
+                        apexVal_arrayset(variadic_args, apexVal_makeint(variadic_index--), stack_pop(vm));
+                        have_variadic = true;
+                    } else {
+                        if (have_variadic) {
+                            apexSym_setlocal(&vm->local_scopes, fn->params[param_index++], apexVal_makearr(variadic_args));
+                            have_variadic = false;
+                        }
+                        apexSym_setlocal(&vm->local_scopes, fn->params[param_index++], stack_pop(vm));
+                    }
                 }
                 ApexObject *newobj = apexVal_objectcpy(obj);                
                 vm->obj_context = apexVal_makeobj(newobj);
@@ -1221,20 +1263,39 @@ bool vm_dispatch(ApexVM *vm) {
             ApexFn *fn = fnval.fnval;
             int ret_addr = vm->ip;
             stack_pop(vm);
-
-            if (argc != fn->argc) {
+            if (fn->have_variadic) {
+                if (argc < fn->argc) {
+                    apexErr_runtime(vm, "expected at least %d arguments, got %d", fn->argc, argc);
+                    return false;
+                }
+            } else if (argc != fn->argc) {
                 apexErr_runtime(vm, "expected %d arguments, got %d", fn->argc, argc);
                 return false;
             }
 
             push_callframe(vm, fn->name, ins->srcloc);
-            push_scope(&vm->local_scopes);            
-            
-            for (int i = 0; i < fn->argc; i++) {
-                ApexValue arg = stack_pop(vm);
-                const char *name = fn->params[i];                
-                apexSym_setlocal(&vm->local_scopes, name, arg);
+            push_scope(&vm->local_scopes);       
+
+            ApexArray *variadic_args = NULL;
+            int param_index = 0;
+            bool have_variadic = false;
+
+            if (fn->have_variadic) {
+                variadic_args = apexVal_newarray();
             }
+            int variadic_index = argc - fn->argc;
+            for (int i = 0; i < argc; i++) {
+                if (fn->have_variadic && argc - i >= fn->argc) {
+                    apexVal_arrayset(variadic_args, apexVal_makeint(variadic_index--), stack_pop(vm));
+                    have_variadic = true;
+                } else {
+                    if (have_variadic) {
+                        apexSym_setlocal(&vm->local_scopes, fn->params[param_index++], apexVal_makearr(variadic_args));
+                        have_variadic = false;
+                    }
+                    apexSym_setlocal(&vm->local_scopes, fn->params[param_index++], stack_pop(vm));
+                }
+            }       
             vm->obj_context = objval;
             stack_push(vm, apexVal_makeint(ret_addr));
             vm->ip = fn->addr;

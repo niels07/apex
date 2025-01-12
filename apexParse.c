@@ -1438,19 +1438,40 @@ static AST *parse_function_declaration(Parser *parser) {
     CONSUME(parser, TOKEN_LPAREN);
     
     AST *parameters = NULL;
+    bool have_variadic = false;
     while (parser->current_token->type != TOKEN_RPAREN) {
-        if (parser->current_token->type != TOKEN_IDENT) {
+        AST *param;
+        if (parser->current_token->type == TOKEN_STAR) {
+            if (have_variadic) {
+                apexErr_syntax(
+                    parser->lexer->srcloc,
+                    "only one variadic parameter is allowed");
+                return NULL;
+            }
+            CONSUME(parser, TOKEN_STAR);
+            if (parser->current_token->type != TOKEN_IDENT) {
+                apexErr_syntax(
+                    parser->lexer->srcloc,
+                    "expected parameter name after '*'");
+                return NULL;
+            }
+            param = CREATE_AST_STR(
+                AST_VARIADIC, NULL, NULL,
+                parser->current_token->str,
+                parser->current_token->srcloc);
+            have_variadic = true;
+        } else if (parser->current_token->type == TOKEN_IDENT) {
+            param = CREATE_AST_STR(
+                AST_VAR, NULL, NULL,
+                parser->current_token->str,
+                parser->current_token->srcloc);
+        } else {
             apexErr_syntax(
                 parser->lexer->srcloc,
                 "expected parameter name");
             return NULL;
         }
-
-        AST *param = CREATE_AST_STR(
-            AST_VAR, NULL, NULL,
-            parser->current_token->str,
-            parser->current_token->srcloc);
-
+        
         parameters = CREATE_AST_ZERO(
             AST_PARAMETER_LIST, param, parameters,
             parser->current_token->srcloc);
