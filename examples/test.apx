@@ -1,3 +1,9 @@
-foreach (arg in @args) {
-    io:print("arg: " + arg);
-}
+x = [
+    "one" => ["two" => 3],
+    "four" => ["five" => 6],
+    "seven" => 8
+];
+
+io:print(x);
+io:print(x["one"]);
+io:print(x["four"]);

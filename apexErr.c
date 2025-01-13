@@ -30,7 +30,7 @@ void apexErr_error(SrcLoc srcloc, const char *fmt, ...) {
     va_start(args, fmt);
     fprintf(stderr, "error");
     if (srcloc.lineno && srcloc.filename) {
-        fprintf(stderr,"(line %d, file %s): ", 
+        fprintf(stderr," (line %d, file %s): ", 
         srcloc.lineno, 
         srcloc.filename);
     } else {

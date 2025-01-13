@@ -53,6 +53,7 @@ typedef enum {
     AST_ARRAY,
     AST_ARRAY_ACCESS,
     AST_KEY_VALUE_PAIR,
+    AST_ELEMENT,
     AST_RETURN,
     AST_BREAK,
     AST_CONTINUE,
@@ -77,6 +78,7 @@ typedef struct AST {
     ASTNodeType type;
     struct AST *left;
     struct AST *right;
+    struct AST *next;
     ASTValue value;
     SrcLoc srcloc;
     bool val_is_ast;

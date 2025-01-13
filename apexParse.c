@@ -462,23 +462,32 @@ static AST *parse_array(Parser *parser) {
         return node;
     }
 
+    AST *last_element = NULL;
     while (parser->current_token->type != TOKEN_RBRACKET) {
+        AST *new_element = NULL;
         // Check if the array literal contains a key-value pair
         if (peek_token(parser, 1).type == TOKEN_ARROW) {
             AST *key = parse_expression(parser);
-            
             CONSUME(parser, TOKEN_ARROW);
             AST *value = parse_expression(parser);
-            AST *key_value_pair = CREATE_AST_ZERO(
+            new_element = CREATE_AST_ZERO(
                 AST_KEY_VALUE_PAIR, key, value,
-                parser->current_token->srcloc);
-
-            node->right = append_ast(node->right, key_value_pair);
+                parser->current_token->srcloc);    
         } else { 
             // Parse an expression as an array element
             AST *value = parse_expression(parser);
-            node->right = append_ast(node->right, value);
+            new_element = CREATE_AST_ZERO(
+                AST_ELEMENT, NULL, value,
+                parser->current_token->srcloc);
         }
+
+        if (!last_element) {
+            node->right = new_element;
+        } else {
+            last_element->next = new_element; // Use `next` for siblings
+        }
+
+        last_element = new_element;
 
         if (parser->current_token->type == TOKEN_COMMA) {
             CONSUME(parser, TOKEN_COMMA);
@@ -1065,6 +1074,9 @@ static AST *parse_if_statement(Parser *parser) {
     CONSUME(parser, TOKEN_IF);
     CONSUME(parser, TOKEN_LPAREN);
     AST *condition = parse_expression(parser);
+    if (!condition) {
+        return NULL;
+    }
     CONSUME(parser, TOKEN_RPAREN);
 
     if (parser->current_token->type == TOKEN_LBRACE) {
@@ -1073,7 +1085,7 @@ static AST *parse_if_statement(Parser *parser) {
         then_branch = parse_statement(parser);
     }
 
-    if (parser->allow_incomplete && !then_branch) {
+    if (!then_branch) {
         return NULL;
     }
 

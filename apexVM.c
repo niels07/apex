@@ -402,6 +402,16 @@ void apexVM_pusharr(ApexVM *vm, ApexArray *arr) {
     stack_push(vm, apexVal_makearr(arr));
 }
 
+/**
+ * Pushes a null value onto the virtual machine's stack.
+ *
+ * This function creates an ApexValue representing a null value and pushes
+ * it onto the stack of the specified virtual machine instance. The function
+ * does not perform any type conversion or checking on the value being pushed.
+ *
+ * @param vm A pointer to the virtual machine instance whose stack the
+ *           null value will be pushed onto.
+ */
 void apexVM_pushnull(ApexVM *vm) {
     stack_push(vm, apexVal_makenull());
 }
@@ -1045,14 +1055,23 @@ bool vm_dispatch(ApexVM *vm) {
 
             for (int i = 0; i < argc; i++) {
                 if (fn->have_variadic && argc - i >= fn->argc) {
-                    apexVal_arrayset(variadic_args, apexVal_makeint(variadic_index--), stack_pop(vm));
+                    apexVal_arrayset(
+                        variadic_args,
+                        apexVal_makeint(variadic_index--),
+                        stack_pop(vm));
                     have_variadic = true;
                 } else {
                     if (have_variadic) {
-                        apexSym_setlocal(&vm->local_scopes, fn->params[param_index++], apexVal_makearr(variadic_args));
+                        apexSym_setlocal(
+                            &vm->local_scopes, 
+                            fn->params[param_index++], 
+                            apexVal_makearr(variadic_args));
                         have_variadic = false;
                     }
-                    apexSym_setlocal(&vm->local_scopes, fn->params[param_index++], stack_pop(vm));
+                    apexSym_setlocal(
+                        &vm->local_scopes,
+                        fn->params[param_index++],
+                        stack_pop(vm));
                 }
             }
             stack_push(vm, apexVal_makeint(ret_addr));
@@ -1064,14 +1083,17 @@ bool vm_dispatch(ApexVM *vm) {
             break;
         case OP_JUMP_IF_FALSE: {
             ApexValue condition = stack_pop(vm);
-            if (!apexVal_tobool(condition)) {
+            if (!apexVal_tobool(condition)) {  
+                apexVal_release(condition);             
                 vm->ip += ins->value.intval;
-            }
+            }            
             break;
         }
         case OP_JUMP_IF_DONE: {
             ApexValue condition = stack_pop(vm);
             if (!condition.boolval) {
+                ApexValue iterable = stack_pop(vm);
+                apexVal_release(iterable);
                 vm->ip += ins->value.intval;
             }
             break;
@@ -1098,6 +1120,7 @@ bool vm_dispatch(ApexVM *vm) {
 
             // Check if iteration is complete
             if (index.intval >= iterable.arrval->iter_count) {
+                stack_push(vm, iterable); 
                 stack_push(vm, apexVal_makebool(false)); // Signal iteration end
             } else {
                 // Push current value and advance index
@@ -1111,17 +1134,17 @@ bool vm_dispatch(ApexVM *vm) {
             }
             break;
         }
-
         case OP_CREATE_ARRAY: {
             ApexArray *array = apexVal_newarray();
             int i = vm->stack_top - ins->value.intval * 2;
             while (i < vm->stack_top - 1) {                
                 ApexValue key = vm->stack[i];
-                ApexValue value = vm->stack[i + 1];                            
+                ApexValue value = vm->stack[i + 1];
+                printf("setting array[%s] = %s\n", apexVal_tostr(key)->value, apexVal_tostr(value)->value);                    
                 apexVal_arrayset(array, key, value);
                 i += 2;
             }
-            vm->stack_top -= ins->value.intval;
+            vm->stack_top -= ins->value.intval * 2;
             stack_push(vm, apexVal_makearr(array));
             break;
         }

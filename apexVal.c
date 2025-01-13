@@ -391,6 +391,7 @@ static bool value_equals(const ApexValue a, const ApexValue b) {
 void apexVal_retain(ApexValue value) {
     switch (value.type) {
     case APEX_VAL_ARR:
+        printf("retaining %s %d\n", apexVal_tostr(value)->value, value.arrval->refcount + 1);
         value.arrval->refcount++;
         break;
 
@@ -447,6 +448,23 @@ void apexVal_release(ApexValue value) {
 }
 
 /**
+ * Checks if a value is a newly created array.
+ *
+ * This function checks if the given ApexValue is an array and if its
+ * "is_new" flag is set. If the value is an array and its "is_new" flag
+ * is set, then it returns true. Otherwise, it returns false.
+ *
+ * @param value The ApexValue to check.
+ * @return true if the ApexValue is a newly created array, false otherwise.
+ */
+bool apexVal_isnew(ApexValue value) {
+    if (value.type == APEX_VAL_ARR) {
+        return value.arrval->is_new;
+    }
+    return false;
+}
+
+/**
  * Initializes a new function with the given name, parameters, and address.
  *
  * This function allocates a new ApexFn structure and assigns it the given name,
@@ -466,7 +484,7 @@ ApexFn *apexVal_newfn(const char *name, char **params, int argc, bool have_varia
     fn->argc = argc;
     fn->params = params;
     fn->addr = addr;
-    fn->refcount = 0;
+    fn->refcount = 1;
     fn->have_variadic = have_variadic;
     return fn;
 }
@@ -508,7 +526,8 @@ ApexArray *apexVal_newarray(void) {
     array->iter_size = ARR_INIT_SIZE;
     array->entry_count = 0;
     array->iter_count = 0;
-    array->refcount = 0;
+    array->refcount = 1;
+    array->is_new = true;
     return array;
 }
 
@@ -528,7 +547,7 @@ ApexObject *apexVal_newobject(const char *name) {
     object->entries = apexMem_calloc(sizeof(ApexObjectEntry), OBJ_INIT_SIZE);
     object->size = OBJ_INIT_SIZE;
     object->count = 0;
-    object->refcount = 0;
+    object->refcount = 1;
     object->name = name;
     return object;
 }

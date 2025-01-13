@@ -198,4 +198,5 @@ void apexStr_freetable(void) {
         }
         string_table[i] = NULL;
     }
+    free(string_table);
 }

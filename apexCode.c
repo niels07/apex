@@ -209,21 +209,26 @@ static bool compile_array(ApexVM *vm, AST *node) {
                 return false;
             }
             count++;
-        } else if (!current->right || current->right->type != AST_KEY_VALUE_PAIR) {
+            
+        } else if (current->type == AST_ELEMENT) {
             EMIT_OP_INT(vm, OP_PUSH_INT, count); 
             if (!compile_expression(vm, current, true)) { // array element
                 return false;
             }
             count++;
+            
+        } else if (current->type == AST_ARRAY) {
+            if (!compile_array(vm, current)) {
+                return false;
+            }
+            count++;
         }
-        
-        current = current->right->right;
+        current = current->next;
     }
-
+    printf("create array: %d\n", count);
     EMIT_OP_INT(vm, OP_CREATE_ARRAY, count);
     return true;
 }
-
 
 /**
  * Compiles an AST node representing an array access to bytecode.
@@ -1153,6 +1158,52 @@ static bool compile_foreach(ApexVM *vm, AST *node) {
 }
 
 /**
+ * Compiles an AST node representing an if statement to bytecode.
+ *
+ * This function compiles the condition and the true and false branches. It
+ * emits a conditional jump instruction to skip over the true branch if the
+ * condition evaluates to false. After compiling the true branch, it emits an
+ * unconditional jump instruction to skip over the false branch. If the false
+ * branch is present, it emits a second conditional jump instruction to skip
+ * over it. Finally, it patches the jump instructions to refer to the correct
+ * addresses.
+ *
+ * @param vm A pointer to the virtual machine structure containing the
+ *           instruction chunk.
+ * @param node The AST node representing the if statement to be compiled.
+ * @return true if the if statement was compiled successfully, false
+ *         otherwise.
+ */
+static bool compile_if(ApexVM *vm, AST *node) {
+    UPDATE_SRCLOC(vm, node);
+
+    if (!compile_expression(vm, node->left, true)) { // Condition
+        return false;
+    }
+    EMIT_OP(vm, OP_JUMP_IF_FALSE);
+    int false_jmp_i = vm->chunk->ins_count - 1;
+
+    if (!compile_statement(vm, node->right)) { // Block or statement 
+        return false;
+    }
+    EMIT_OP(vm, OP_JUMP);
+    int true_jmp_i = vm->chunk->ins_count - 1;
+
+    if (node->value.ast_node) {
+        vm->chunk->ins[false_jmp_i].value.intval = 
+            vm->chunk->ins_count - false_jmp_i - 1;
+        if (!compile_statement(vm, node->value.ast_node)) {
+            return false;
+        }
+    } else {
+        vm->chunk->ins[false_jmp_i].value.intval = 
+            vm->chunk->ins_count - false_jmp_i - 1;
+    }
+    vm->chunk->ins[true_jmp_i].value.intval = vm->chunk->ins_count - true_jmp_i - 1;
+    return true;
+}
+
+/**
  * Compiles an AST node representing a statement to bytecode.
  *
  * This function recursively traverses the AST statement structure, compiling
@@ -1171,41 +1222,12 @@ static bool compile_statement(ApexVM *vm, AST *node) {
     }
 
     switch (node->type) {
-    case AST_IF: {
-        int false_jmp_i;
-        int true_jmp_i;
-
-        UPDATE_SRCLOC(vm, node);
-
-        if (!compile_expression(vm, node->left, true)) { // Condition
-            return false;
-        }
-        EMIT_OP(vm, OP_JUMP_IF_FALSE);
-        false_jmp_i = vm->chunk->ins_count - 1;
-
-        if (!compile_statement(vm, node->right)) { // Block or statement 
-            return false;
-        }
-        EMIT_OP(vm, OP_JUMP);
-        true_jmp_i = vm->chunk->ins_count - 1;
-
-        if (node->value.ast_node) {
-            vm->chunk->ins[false_jmp_i].value.intval = vm->chunk->ins_count - false_jmp_i - 1;
-            if (!compile_statement(vm, node->value.ast_node)) {
-                return false;
-            }
-        } else {
-            vm->chunk->ins[false_jmp_i].value.intval = vm->chunk->ins_count - false_jmp_i - 1;
-        }
-        vm->chunk->ins[true_jmp_i].value.intval = vm->chunk->ins_count - true_jmp_i - 1;
-        break;
-    }
+    case AST_IF: 
+        return compile_if(vm, node);
     case AST_SWITCH:
         return compile_switch(vm, node);
-
     case AST_WHILE: 
         return compile_loop(vm, node->left, node->right, NULL);
-
     case AST_FOR: 
         if (!compile_statement(vm, node->left)) {
             return false;
@@ -1217,10 +1239,8 @@ static bool compile_statement(ApexVM *vm, AST *node) {
 
     case AST_FOREACH:
         return compile_foreach(vm, node);
-
     case AST_INCLUDE:
-        return compile_include(vm, node);
-        
+        return compile_include(vm, node);        
     case AST_CONTINUE:
         if (vm->loop_start == -1) {
             apexErr_syntax(node->srcloc, "invalid 'continue' outside of loop");
@@ -1228,7 +1248,6 @@ static bool compile_statement(ApexVM *vm, AST *node) {
         }
         EMIT_OP_INT(vm, OP_JUMP, vm->loop_start - vm->chunk->ins_count - 1);
         break;
-
     case AST_BREAK:
         if (vm->loop_end == -1) {
             apexErr_syntax(node->srcloc,"invalid 'break' outside of loop");

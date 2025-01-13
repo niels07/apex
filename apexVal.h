@@ -71,6 +71,7 @@ struct ApexArray {
     int iter_size;
     int iter_count;
     int refcount;
+    bool is_new;
 };
 
 typedef struct ApexObjectEntry {

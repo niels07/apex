@@ -57,6 +57,7 @@ static const char *get_ast_node_type_name(ASTNodeType type) {
         case AST_ARRAY: return "AST_ARRAY";
         case AST_ARRAY_ACCESS: return "AST_ARRAY_ACCESS";
         case AST_KEY_VALUE_PAIR: return "AST_KEY_VALUE_PAIR";
+        case AST_ELEMENT: return "AST_ELEMENT";
         case AST_INCLUDE: return "AST_INCLUDE";
         case AST_MEMBER_ACCESS: return "AST_MEMBER_ACCESS";
         case AST_MEMBER_FN: return "AST_MEMBER_FN";
@@ -112,6 +113,12 @@ void print_ast(AST *node, int indent) {
         print_indent(indent);
         printf("Right:\n");
         print_ast(node->right, indent + 1);
+    }
+
+    if (node->next) {
+        print_indent(indent);
+        printf("Next:\n");
+        print_ast(node->next, indent + 1);
     }
 
     if (node->type == AST_FN_DECL || 
