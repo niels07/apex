@@ -64,6 +64,7 @@ static const char *opcode_to_string(OpCode opcode) {
         case OP_GET_MEMBER: return "OP_GET_MEMBER";
         case OP_CALL_MEMBER: return "OP_CALL_MEMBER";
         case OP_CREATE_OBJECT: return "OP_CREATE_OBJECT";
+        case OP_CREATE_CLOSURE: return "OP_CREATE_CLOSURE";
         case OP_NEW: return "OP_NEW";
         case OP_HALT: return "OP_HALT";
     }
@@ -925,7 +926,7 @@ static bool decvalue(ApexVM *vm, ApexValue *value) {
 bool vm_dispatch(ApexVM *vm) {
     for (;;) {
         Ins *ins = next_ins(vm);
-
+        
         switch (ins->opcode) {
         case OP_PUSH_INT:
         case OP_PUSH_DBL:
@@ -1068,10 +1069,12 @@ bool vm_dispatch(ApexVM *vm) {
                             apexVal_makearr(variadic_args));
                         have_variadic = false;
                     }
+                    ApexValue value = stack_pop(vm);
+                    printf("setting param %s to %s\n", fn->params[param_index], apexVal_tostr(value)->value);
                     apexSym_setlocal(
                         &vm->local_scopes,
                         fn->params[param_index++],
-                        stack_pop(vm));
+                        value);
                 }
             }
             stack_push(vm, apexVal_makeint(ret_addr));
@@ -1083,8 +1086,13 @@ bool vm_dispatch(ApexVM *vm) {
             break;
         case OP_JUMP_IF_FALSE: {
             ApexValue condition = stack_pop(vm);
+            if (!apexVal_isassigned(condition)) {
+                apexVal_retain(condition);
+            }
             if (!apexVal_tobool(condition)) {  
-                apexVal_release(condition);             
+                if (!apexVal_isassigned(condition)) {
+                    apexVal_release(condition); 
+                }                            
                 vm->ip += ins->value.intval;
             }            
             break;
@@ -1139,8 +1147,7 @@ bool vm_dispatch(ApexVM *vm) {
             int i = vm->stack_top - ins->value.intval * 2;
             while (i < vm->stack_top - 1) {                
                 ApexValue key = vm->stack[i];
-                ApexValue value = vm->stack[i + 1];
-                printf("setting array[%s] = %s\n", apexVal_tostr(key)->value, apexVal_tostr(value)->value);                    
+                ApexValue value = vm->stack[i + 1];                  
                 apexVal_arrayset(array, key, value);
                 i += 2;
             }
@@ -1326,14 +1333,23 @@ bool vm_dispatch(ApexVM *vm) {
             int variadic_index = argc - fn->argc;
             for (int i = 0; i < argc; i++) {
                 if (fn->have_variadic && argc - i >= fn->argc) {
-                    apexVal_arrayset(variadic_args, apexVal_makeint(variadic_index--), stack_pop(vm));
+                    apexVal_arrayset(
+                        variadic_args,
+                        apexVal_makeint(variadic_index--),
+                        stack_pop(vm));
                     have_variadic = true;
                 } else {
                     if (have_variadic) {
-                        apexSym_setlocal(&vm->local_scopes, fn->params[param_index++], apexVal_makearr(variadic_args));
+                        apexSym_setlocal(
+                            &vm->local_scopes,
+                            fn->params[param_index++],
+                            apexVal_makearr(variadic_args));
                         have_variadic = false;
                     }
-                    apexSym_setlocal(&vm->local_scopes, fn->params[param_index++], stack_pop(vm));
+                    apexSym_setlocal(
+                        &vm->local_scopes,
+                        fn->params[param_index++],
+                        stack_pop(vm));
                 }
             }       
             vm->obj_context = objval;
@@ -1386,6 +1402,11 @@ bool vm_dispatch(ApexVM *vm) {
                 apexErr_runtime(vm, "local variable '%s' not found", name->value);
                 return false;
             }
+            stack_push(vm, value);
+            break;
+        }
+        case OP_CREATE_CLOSURE: {
+            ApexValue value = ins->value;
             stack_push(vm, value);
             break;
         }

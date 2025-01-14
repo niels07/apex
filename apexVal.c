@@ -391,7 +391,6 @@ static bool value_equals(const ApexValue a, const ApexValue b) {
 void apexVal_retain(ApexValue value) {
     switch (value.type) {
     case APEX_VAL_ARR:
-        printf("retaining %s %d\n", apexVal_tostr(value)->value, value.arrval->refcount + 1);
         value.arrval->refcount++;
         break;
 
@@ -447,21 +446,38 @@ void apexVal_release(ApexValue value) {
     }
 }
 
+
 /**
- * Checks if a value is a newly created array.
+ * Checks if a value is assigned or not.
  *
- * This function checks if the given ApexValue is an array and if its
- * "is_new" flag is set. If the value is an array and its "is_new" flag
- * is set, then it returns true. Otherwise, it returns false.
+ * This function checks if a value is assigned or not. If the value is an
+ * array, it checks the is_assigned field of the array. Otherwise, it returns
+ * false.
  *
  * @param value The ApexValue to check.
- * @return true if the ApexValue is a newly created array, false otherwise.
+ * @return true if the value is assigned, otherwise false.
  */
-bool apexVal_isnew(ApexValue value) {
+bool apexVal_isassigned(ApexValue value) {
     if (value.type == APEX_VAL_ARR) {
-        return value.arrval->is_new;
+        return value.arrval->is_assigned;
     }
     return false;
+}
+
+/**
+ * Sets the assigned flag of a value.
+ *
+ * This function sets the assigned flag of the given ApexValue to the given
+ * boolean value. If the value is an array, its assigned flag is set to the
+ * given boolean value. Otherwise, the call has no effect.
+ *
+ * @param value The ApexValue to set the assigned flag of.
+ * @param is_assigned The boolean value to set the assigned flag to.
+ */
+void apexVal_setassigned(ApexValue value, bool is_assigned) {
+    if (value.type == APEX_VAL_ARR) {
+        value.arrval->is_assigned = is_assigned;
+    }
 }
 
 /**
@@ -484,7 +500,7 @@ ApexFn *apexVal_newfn(const char *name, char **params, int argc, bool have_varia
     fn->argc = argc;
     fn->params = params;
     fn->addr = addr;
-    fn->refcount = 1;
+    fn->refcount = 0;
     fn->have_variadic = have_variadic;
     return fn;
 }
@@ -526,8 +542,8 @@ ApexArray *apexVal_newarray(void) {
     array->iter_size = ARR_INIT_SIZE;
     array->entry_count = 0;
     array->iter_count = 0;
-    array->refcount = 1;
-    array->is_new = true;
+    array->refcount = 0;
+    array->is_assigned = false;
     return array;
 }
 
@@ -707,9 +723,10 @@ void apexVal_arrayset(ApexArray *array, ApexValue key, ApexValue value) {
         entry = entry->next;
     }
 
-    entry = apexMem_alloc(sizeof(ArrayEntry));
-    apexVal_retain(key); 
+    apexVal_setassigned(value, true);
     apexVal_retain(value);
+
+    entry = apexMem_alloc(sizeof(ArrayEntry));
     entry->key = key;
     entry->value = value;
     entry->next = array->entries[index];
@@ -764,31 +781,76 @@ void apexVal_objectset(ApexObject *object, const char *key, ApexValue value) {
     }
 }
 
+
 /**
- * Creates a deep copy of an object.
+ * Creates a copy of a given ApexFn structure.
  *
- * This function creates a new object with the same name as the given object.
- * It iterates through all the entries in the given object and inserts or
- * updates the corresponding key-value pair in the new object. If the value is
- * of type object, it recursively calls apexVal_objectcpy to create a deep
- * copy of the nested object. Finally, it returns the new object.
+ * This function allocates memory for a new ApexFn structure and duplicates
+ * the fields of the provided ApexFn, including its name, number of arguments,
+ * parameters, address, and variadic flag. The reference count of the new
+ * function is initialized to zero. The parameter names are copied into a 
+ * newly allocated array.
  *
- * @param object A pointer to the object to copy.
- * @return A pointer to the new object created as a deep copy of the given
- *         object.
+ * @param fn A pointer to the ApexFn structure to be copied.
+ * @return A pointer to the newly allocated copy of the given ApexFn.
+ */
+ApexFn *apexVal_fncpy(ApexFn *fn) {
+    ApexFn *new_fn = apexMem_alloc(sizeof(ApexFn));
+    new_fn->name = fn->name;
+    new_fn->argc = fn->argc;
+    new_fn->params = apexMem_alloc(sizeof(char *) * fn->argc);
+    for (int i = 0; i < fn->argc; i++) {
+        new_fn->params[i] = fn->params[i];
+    }
+    new_fn->addr = fn->addr;
+    new_fn->refcount = 0;
+    new_fn->have_variadic = fn->have_variadic;
+    return new_fn;
+}
+
+
+/**
+ * Creates a deep copy of a given object.
+ *
+ * This function allocates memory for a new ApexObject structure and initializes
+ * its fields. The object is then populated with copies of each key-value pair
+ * in the given object. If the value in a key-value pair is an object, the
+ * function is called recursively to make a deep copy of the object. If the
+ * value in a key-value pair is a function, the function is shallow copied.
+ *
+ * @param object The object to be copied.
+ * @return A pointer to the newly allocated ApexObject.
  */
 ApexObject *apexVal_objectcpy(ApexObject *object) {
-    ApexObject *newobj = apexVal_newobject(object->name);
+    ApexObject *newobj = apexMem_alloc(sizeof(ApexObject));
+    newobj->entries = apexMem_calloc(sizeof(ApexObjectEntry), object->size);
+    newobj->size = object->size;
+    newobj->count = object->count;
+    newobj->refcount = 0;
+    newobj->name = object->name;
+    
     for (int i = 0; i < object->size; i++) {
         ApexObjectEntry *entry = object->entries[i];
-        if (entry) {
-            ApexValue value = entry->value;
-            if (value.type == APEX_VAL_OBJ) {
+        ApexObjectEntry **newentry_ptr = &newobj->entries[i];
+
+        while (entry) {
+            ApexObjectEntry *newentry = apexMem_alloc(sizeof(ApexObjectEntry));
+            newentry->key = entry->key;
+            if (entry->value.type == APEX_VAL_OBJ) {
                 ApexObject *objcpy = apexVal_objectcpy(entry->value.objval);
-                value = apexVal_makeobj(objcpy);
+                newentry->value = apexVal_makeobj(objcpy);
+            } else if (entry->value.type == APEX_VAL_FN) {
+                ApexFn *fn = apexVal_fncpy(entry->value.fnval);
+                newentry->value = apexVal_makefn(fn);
+            } else {
+                newentry->value = entry->value;
             }
-            apexVal_objectset(newobj, entry->key, value);
+
+            *newentry_ptr = newentry;
+            newentry_ptr = &newentry->next;
+            entry = entry->next;
         }
+        *newentry_ptr = NULL;
     }
     return newobj;
 }

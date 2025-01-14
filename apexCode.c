@@ -174,7 +174,7 @@ static char **compile_parameter_list(AST *param_list, int *argc, bool *have_vari
                 break;
             }
         } else {
-            apexErr_syntax(param_list->srcloc,"Invalid AST node in parameter list");
+            apexErr_syntax(param_list->srcloc, "invalid AST node in parameter list");
             return NULL;
         }
     }
@@ -212,7 +212,7 @@ static bool compile_array(ApexVM *vm, AST *node) {
             
         } else if (current->type == AST_ELEMENT) {
             EMIT_OP_INT(vm, OP_PUSH_INT, count); 
-            if (!compile_expression(vm, current, true)) { // array element
+            if (!compile_expression(vm, current->right, true)) { // array element
                 return false;
             }
             count++;
@@ -319,7 +319,7 @@ static bool compile_function_declaration(ApexVM *vm, AST *node) {
         EMIT_OP(vm, OP_FUNCTION_START);
         push_scope(&vm->local_scopes);
         int argc = 0;
-        bool have_variadic;
+        bool have_variadic = false;
         char **params = compile_parameter_list(node->value.ast_node, &argc, &have_variadic);
         if (!params) {
             return false;
@@ -346,7 +346,7 @@ static bool compile_function_declaration(ApexVM *vm, AST *node) {
     } else {
         const char *fnname = node->left->value.strval->value;
         int argc = 0;
-        bool have_variadic;
+        bool have_variadic = false;
         vm->in_function = true;
         EMIT_OP(vm, OP_FUNCTION_START);
         push_scope(&vm->local_scopes);
@@ -366,7 +366,6 @@ static bool compile_function_declaration(ApexVM *vm, AST *node) {
     }
     return true;
 }
-
 
 /**
  * Compiles an AST node representing a function call to bytecode.
@@ -389,7 +388,12 @@ static bool compile_function_call(ApexVM *vm, AST *node) {
     if (!compile_argument_list(vm, node->right, &argc)) {
         return false;
     }
-    EMIT_OP_STR(vm, OP_GET_GLOBAL, fn_name);
+    if (vm->in_function) {
+        EMIT_OP_STR(vm, OP_GET_LOCAL, fn_name);
+    } else {
+        EMIT_OP_STR(vm, OP_GET_GLOBAL, fn_name);
+    }
+    
     EMIT_OP_INT(vm, OP_CALL, argc);
     return true;
 }
@@ -774,6 +778,48 @@ static bool compile_object_literal(ApexVM *vm, AST *node) {
 }
 
 /**
+ * Compiles an AST node representing a closure to bytecode.
+ *
+ * This function compiles the parameter list and body of a closure,
+ * setting up the function environment and emitting the necessary
+ * instructions to define and return the closure.
+ *
+ * @param vm A pointer to the virtual machine structure containing the
+ *           instruction chunk and symbol tables.
+ * @param node The AST node representing the closure to be compiled.
+ * @return true if the closure was compiled successfully, false otherwise.
+ */
+static bool compile_closure(ApexVM *vm, AST *node) {
+    int argc = 0;
+    bool have_variadic = false;
+    vm->in_function = true;
+    EMIT_OP(vm, OP_FUNCTION_START);
+    push_scope(&vm->local_scopes);
+
+    char **params = compile_parameter_list(node->left, &argc, &have_variadic);
+    if (!params) {
+        return false;
+    }
+
+    const char *fn_name = apexStr_new("<closure>", 9)->value;      
+    ApexFn *fn = apexVal_newfn(fn_name, params, argc, have_variadic, vm->chunk->ins_count);
+    
+
+    if (!compile_statement(vm, node->right)) { // Compile the function body
+        return false;
+    }
+
+    EMIT_OP(vm, OP_RETURN);
+    pop_scope(&vm->local_scopes);
+    EMIT_OP(vm, OP_FUNCTION_END);
+    vm->in_function = false;
+
+    emit_instruction(vm, OP_CREATE_CLOSURE, apexVal_makefn(fn));
+
+    return true;
+}
+
+/**
  * Compiles an AST node representing an expression to bytecode.
  *
  * This function compiles the AST node recursively, emitting instructions to
@@ -872,6 +918,9 @@ static bool compile_expression(ApexVM *vm, AST *node, bool result_used) {
 
     case AST_ARRAY_ACCESS:
         return compile_array_access(vm, node, false);
+
+    case AST_CLOSURE:
+        return compile_closure(vm, node);
 
     case AST_ASSIGNMENT:
     case AST_ASSIGN_ADD:

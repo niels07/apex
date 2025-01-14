@@ -63,6 +63,7 @@ static const char *get_ast_node_type_name(ASTNodeType type) {
         case AST_MEMBER_FN: return "AST_MEMBER_FN";
         case AST_CTOR: return "AST_CTOR";
         case AST_NEW: return "AST_NEW";
+        case AST_CLOSURE: return "AST_CLOSURE";
         case AST_OBJECT: return "AST_OBJECT";
         case AST_SWITCH: return "AST_SWITCH";
         case AST_CASE: return "AST_CASE";
@@ -155,6 +156,7 @@ AST *create_ast_node(ASTNodeType type, AST *left, AST *right, ASTValue value, bo
     node->left = left;
     node->right = right;
     node->value = value;
+    node->next = NULL;
     node->val_is_ast = val_is_ast;
     node->srcloc = srcloc;
     return node;
@@ -176,6 +178,7 @@ AST *create_error_ast(void) {
     node->type = AST_ERROR;
     node->left = NULL;
     node->right = NULL;
+    node->next = NULL;
     node->srcloc.filename = NULL;
     node->srcloc.lineno = 0;
     node->val_is_ast = false;
@@ -236,6 +239,7 @@ void free_ast(AST *node) {
     if (node) {
         free_ast(node->left);
         free_ast(node->right);
+        free_ast(node->next);
         if (node->val_is_ast) {
             free_ast(node->value.ast_node);
         }

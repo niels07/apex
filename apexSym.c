@@ -103,11 +103,8 @@ void apexSym_setglobal(SymbolTable *table, const char *name, ApexValue value) {
         current = current->next;
     }
     
-    if (value.type == APEX_VAL_ARR && value.arrval->is_new) {
-        value.arrval->is_new = false;
-    } else {
-        apexVal_retain(value);
-    }
+    apexVal_setassigned(value, true);
+    apexVal_retain(value);
    
     Symbol *symbol = apexMem_alloc(sizeof(Symbol));
     symbol->name = name;
@@ -237,11 +234,9 @@ void apexSym_setlocal(ScopeStack *stack, const char *name, ApexValue value) {
         current = current->next;
     }
 
-    if (value.type == APEX_VAL_ARR && value.arrval->is_new) {
-        value.arrval->is_new = false;
-    } else {
-        apexVal_retain(value);
-    }
+    apexVal_setassigned(value, true);
+    apexVal_retain(value);
+    
     Symbol *symbol = apexMem_alloc(sizeof(Symbol));
     symbol->name = name;
     symbol->addr = hash_string(name);

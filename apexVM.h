@@ -61,6 +61,7 @@ typedef enum {
     OP_GET_MEMBER,
     OP_CALL_MEMBER,
     OP_CREATE_OBJECT,
+    OP_CREATE_CLOSURE,
     OP_HALT
 } OpCode;
 

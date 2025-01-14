@@ -71,7 +71,7 @@ struct ApexArray {
     int iter_size;
     int iter_count;
     int refcount;
-    bool is_new;
+    bool is_assigned;
 };
 
 typedef struct ApexObjectEntry {
@@ -100,6 +100,8 @@ extern ApexFn *apexVal_newfn(const char *name, char **params, int argc, bool hav
 extern ApexCfn apexVal_newcfn(char *name, int argc, int (*fn)(ApexVM *, int));
 extern const char *apexVal_typestr(ApexValue value);
 extern ApexString *apexVal_tostr(ApexValue value);
+extern void apexVal_setassigned(ApexValue value, bool is_assigned);
+extern bool apexVal_isassigned(ApexValue value);
 extern ApexValue apexVal_makeint(int value);
 extern ApexValue apexVal_makeflt(float value);
 extern ApexValue apexVal_makedbl(double value);

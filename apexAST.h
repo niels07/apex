@@ -63,6 +63,7 @@ typedef enum {
     AST_MEMBER_FN,
     AST_CTOR,
     AST_NEW,
+    AST_CLOSURE,
     AST_OBJECT,
     AST_SWITCH,
     AST_CASE,

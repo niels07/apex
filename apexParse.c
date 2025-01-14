@@ -187,6 +187,51 @@ static AST *parse_logical(Parser *parser) {
 }
 
 /**
+ * Parses a closure from the input tokens.
+ *
+ * This function assumes that the current token is the start of a closure,
+ * indicated by the keyword 'fn'. It parses the parameter list, and the
+ * body of the closure. If a syntax error is encountered, an error node is
+ * returned, and the current token is consumed to recover.
+ *
+ * @param parser A pointer to the Parser containing the tokens to be parsed.
+ * @return A pointer to an AST node representing the parsed closure, or
+ *         an error node if a syntax error is encountered.
+ */
+static AST *parse_closure(Parser *parser) {
+    SrcLoc srcloc = parser->current_token->srcloc;
+
+    CONSUME(parser, TOKEN_FN);
+    CONSUME(parser, TOKEN_LPAREN);
+    AST *params = NULL;
+    while (parser->current_token->type != TOKEN_RPAREN) {
+        if (parser->current_token->type != TOKEN_IDENT) {
+            apexErr_syntax(parser->lexer->srcloc, "expected parameter name");
+            return NULL;
+        }
+
+        AST *param = CREATE_AST_STR(
+            AST_VAR, NULL, NULL, 
+            parser->current_token->str, 
+            parser->current_token->srcloc);
+
+        params = CREATE_AST_ZERO(
+            AST_PARAMETER_LIST, param, params, 
+            parser->current_token->srcloc);
+
+        CONSUME(parser, TOKEN_IDENT);
+
+        if (parser->current_token->type == TOKEN_COMMA) {
+            CONSUME(parser, TOKEN_COMMA);
+        }
+    }
+
+    CONSUME(parser, TOKEN_RPAREN);
+    AST *body = parse_block(parser);
+    return CREATE_AST_ZERO(AST_CLOSURE, params, body, srcloc);
+}
+
+/**
  * Parses an expression from the input tokens.
  *
  * This function is a wrapper around parse_logical, and will parse a logical
@@ -197,7 +242,11 @@ static AST *parse_logical(Parser *parser) {
  *         error node if a syntax error is encountered.
  */
 static AST *parse_expression(Parser *parser) {
-    return parse_logical(parser);
+    if (parser->current_token->type == TOKEN_FN) {
+        return parse_closure(parser);
+    } else {
+        return parse_logical(parser);
+    }
 }
 
 /**
@@ -638,6 +687,7 @@ static AST *parse_unary(Parser *parser) {
             operator == TOKEN_PLUS_PLUS ? AST_UNARY_INC : AST_UNARY_DEC, 
             NULL, node, parser->current_token->srcloc);
     }
+    printf("--%s\n", get_token_str(parser->current_token->type)->value);
     node = parse_primary(parser);
     if (!node) return NULL;
 

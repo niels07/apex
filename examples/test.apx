@@ -1,9 +1,10 @@
-x = [
-    "one" => ["two" => 3],
-    "four" => ["five" => 6],
-    "seven" => 8
-];
 
-io:print(x);
-io:print(x["one"]);
-io:print(x["four"]);
+fn foo(bar) {
+    bar("one", "two");
+}
+
+foo(fn(a, b) {
+    io:print(a);
+    io:print(b);
+});
+
