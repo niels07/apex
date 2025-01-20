@@ -109,6 +109,7 @@ extern void apexVM_pusharr(ApexVM *vm, ApexArray *arr);
 extern void apexVM_pushnull(ApexVM *vm);
 extern ApexValue apexVM_pop(ApexVM *vm);
 extern ApexValue apexVM_peek(ApexVM *vm, int offset);
+extern bool apexVM_call(ApexVM *vm, ApexFn *fn, int argc);
 extern void print_vm_instructions(ApexVM *vm);
 extern void init_vm(ApexVM *vm);
 extern void apexVM_reset(ApexVM *vm);

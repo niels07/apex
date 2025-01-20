@@ -8,12 +8,20 @@
 #include "apexErr.h"
 
 int io_write(ApexVM *vm, int argc) {
+    if (argc != 1) {
+        apexErr_runtime(vm, "io:write expects exactly 1 argument");
+        return 1;
+    }
     ApexValue value = apexVM_pop(vm);
     printf("%s", apexVal_tostr(value)->value);
     return 0;
 }
 
 int io_print(ApexVM *vm, int argc) {
+    if (argc != 1) {
+        apexErr_runtime(vm, "io:print expects exactly 1 argument");
+        return 1;
+    }
     io_write(vm, argc);
     printf("\n");
     return 0;
@@ -26,6 +34,10 @@ int io_read(ApexVM *vm, int argc) {
 }
 
 int file_write(ApexVM *vm, int argc) {
+    if (argc != 1) {
+        apexErr_runtime(vm, "file.write expects exactly 1 argument");
+        return 1;
+    }
     ApexValue objval = apexVM_pop(vm);
     ApexValue text = apexVM_pop(vm);    
     ApexObject *file_obj = objval.objval;
@@ -72,6 +84,10 @@ int file_close(ApexVM *vm, int argc) {
 }
 
 int io_open(ApexVM *vm, int argc) {
+    if (argc != 2) {
+        apexErr_runtime(vm, "io:open expects exactly 2 arguments");
+        return 1;
+    }
     ApexValue mode = apexVM_pop(vm);
     ApexValue filename = apexVM_pop(vm);    
     FILE *file = fopen(apexVal_str(filename)->value, apexVal_str(mode)->value);
@@ -97,11 +113,11 @@ int io_open(ApexVM *vm, int argc) {
         rewind(file);
     }
     ApexString *write_str = apexStr_new("write", 5);
-    ApexCfn write_fn = apexVal_newcfn(write_str->value, 1, file_write);
+    ApexCfn write_fn = apexVal_newcfn(write_str->value, file_write);
     apexVal_objectset(obj, write_str->value, apexVal_makecfn(write_fn));
 
     ApexString *close_str = apexStr_new("close", 5);
-    ApexCfn close_fn = apexVal_newcfn(close_str->value, 0, file_close);
+    ApexCfn close_fn = apexVal_newcfn(close_str->value, file_close);
     apexVal_objectset(obj, close_str->value, apexVal_makecfn(close_fn));
 
     apexVM_pushval(vm, apexVal_makeobj(obj));
@@ -109,8 +125,8 @@ int io_open(ApexVM *vm, int argc) {
 }
 
 apex_reglib(io,
-    apex_regfn("write", io_write, 1),
-    apex_regfn("print", io_print, 1),
-    apex_regfn("read", io_read, 0),
-    apex_regfn("open", io_open, 2)
+    apex_regfn("write", io_write),
+    apex_regfn("print", io_print),
+    apex_regfn("read", io_read),
+    apex_regfn("open", io_open)
 );

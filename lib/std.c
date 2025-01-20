@@ -10,6 +10,10 @@
 #include "apexStr.h"
 
 int std_int(ApexVM *vm, int argc) {
+    if (argc != 1) {
+        apexErr_runtime(vm, "std:int expects exactly 1 argument");
+        return 1;
+    }
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_BOOL:
@@ -47,6 +51,10 @@ int std_int(ApexVM *vm, int argc) {
 }
 
 int std_str(ApexVM *vm, int argc) {
+    if (argc != 1) {
+        apexErr_runtime(vm, "std:str expects exactly 1 argument");
+        return 1;
+    }
     ApexValue value = apexVM_pop(vm);
     ApexString *str = apexVal_tostr(value);
     apexVM_pushstr(vm, str);
@@ -54,6 +62,10 @@ int std_str(ApexVM *vm, int argc) {
 }
 
 int std_flt(ApexVM *vm, int argc) {
+    if (argc != 1) {
+        apexErr_runtime(vm, "std:flt expects exactly 1 argument");
+        return 1;
+    }
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_INT:
@@ -87,6 +99,10 @@ int std_flt(ApexVM *vm, int argc) {
 }
 
 int std_dbl(ApexVM *vm, int argc) {
+    if (argc != 1) {
+        apexErr_runtime(vm, "std:dbl expects exactly 1 argument");
+        return 1;
+    }
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_INT:
@@ -119,6 +135,10 @@ int std_dbl(ApexVM *vm, int argc) {
 }
 
 int std_bool(ApexVM *vm, int argc) {
+    if (argc != 1) {
+        apexErr_runtime(vm, "std:bool expects exactly 1 argument");
+        return 1;
+    }
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_INT:
@@ -144,6 +164,10 @@ int std_bool(ApexVM *vm, int argc) {
 }
 
 static int std_len(ApexVM *vm, int argc) {
+    if (argc != 1) {
+        apexErr_runtime(vm, "std:len expects exactly 1 argument");
+        return 1;
+    }
     ApexValue value = apexVM_pop(vm);
     switch (apexVal_type(value)) {
     case APEX_VAL_ARR:
@@ -162,10 +186,10 @@ static int std_len(ApexVM *vm, int argc) {
 }
 
 apex_reglib(std, 
-    apex_regfn("int", std_int, 1),
-    apex_regfn("str", std_str, 1),
-    apex_regfn("flt", std_flt, 1),
-    apex_regfn("dbl", std_dbl, 1),
-    apex_regfn("bool", std_bool, 1),
-    apex_regfn("len", std_len, 1)
+    apex_regfn("int", std_int),
+    apex_regfn("str", std_str),
+    apex_regfn("flt", std_flt),
+    apex_regfn("dbl", std_dbl),
+    apex_regfn("bool", std_bool),
+    apex_regfn("len", std_len)
 );

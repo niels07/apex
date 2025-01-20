@@ -80,6 +80,7 @@ static void read_line(char *input, size_t size, bool is_incomplete) {
             if (pos > 0) {
                 add_to_history(input);
             }
+            input[pos] = '\n';
             history_index = history_count; // Reset index after enter
             return;
         } else if (c == 127) { // Backspace
@@ -173,15 +174,21 @@ void start_repl(void) {
         parser.allow_incomplete = true;
 
         AST *program = parse_program(&parser);
+        #ifdef DEBUG
         print_ast(program, 0);
-
+        #endif
         if (program) {
             is_incomplete = false;
             retain_lexer_pos = false;
-            apexCode_compile(&vm, program);
-            print_vm_instructions(&vm);
-            vm_dispatch(&vm);
+            if (program->type != AST_ERROR) {
+                apexCode_compile(&vm, program);
+                #ifdef DEBUG
+                print_vm_instructions(&vm);
+                #endif
+                vm_dispatch(&vm);
+            }
             free_ast(program);
+            apexVM_reset(&vm);
             printf("> ");
         } else {
             is_incomplete = true;
@@ -225,7 +232,7 @@ int main(int argc, char *argv[]) {
 
         ApexArray *args = apexVal_newarray();
         int argi = 0;
-        for (int i = 2; i < argc; i++) {
+        for (int i = 1; i < argc; i++) {
             ApexValue arg_index = apexVal_makeint(argi++);
             ApexValue arg_value = apexVal_makestr(apexStr_new(argv[i], strlen(argv[i])));
             apexVal_arrayset(args, arg_index, arg_value);
@@ -241,14 +248,16 @@ int main(int argc, char *argv[]) {
             cleanup(&vm, ast, &parser, source);
             return EXIT_FAILURE;
         }
-        
+        #ifdef DEBUG
         print_ast(ast, 0);
+        #endif
         if (!apexCode_compile(&vm, ast)) {
             cleanup(&vm, ast, &parser, source);
             return EXIT_FAILURE;
         }
-
+        #ifdef DEBUG
         print_vm_instructions(&vm);
+        #endif
         if (!vm_dispatch(&vm)) {
             cleanup(&vm, ast, &parser, source);
             return EXIT_FAILURE;

@@ -280,7 +280,7 @@ static bool compile_array_access(ApexVM *vm, AST *node, bool is_assignment) {
  *         otherwise.
  */
 static bool compile_argument_list(ApexVM *vm, AST *argument_list, int *argc) {
-    if (argument_list == NULL) {
+    if (!argument_list || !argument_list->right) {
         return true;
     }
     

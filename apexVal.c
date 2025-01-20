@@ -173,7 +173,7 @@ static ApexString *arrtostr(ApexArray *arr) {
     str[1] = '\0';
 
     for (int i = 0; i < arr->entry_size; i++) {
-        ArrayEntry *entry = arr->entries[i];
+        ApexArrayEntry *entry = arr->entries[i];
         while (entry) {
             char *keystr = apexVal_tostr(entry->key)->value;
             char *valstr = apexVal_tostr(entry->value)->value;
@@ -517,10 +517,9 @@ ApexFn *apexVal_newfn(const char *name, char **params, int argc, bool have_varia
  * @param fn The function pointer of the new ApexCfn.
  * @return A pointer to the newly allocated ApexCfn.
  */
-ApexCfn apexVal_newcfn(char *name, int argc, int (*fn)(ApexVM *, int)) {
+ApexCfn apexVal_newcfn(char *name, int (*fn)(ApexVM *, int)) {
     ApexCfn cfn;
     cfn.name = name;
-    cfn.argc = argc;
     cfn.fn = fn;
     return cfn;
 }
@@ -536,8 +535,8 @@ ApexCfn apexVal_newcfn(char *name, int argc, int (*fn)(ApexVM *, int)) {
  */
 ApexArray *apexVal_newarray(void) {
     ApexArray *array = apexMem_alloc(sizeof(ApexArray));
-    array->entries = apexMem_calloc(sizeof(ArrayEntry), ARR_INIT_SIZE);
-    array->iter = apexMem_calloc(sizeof(ArrayEntry), ARR_INIT_SIZE);
+    array->entries = apexMem_calloc(sizeof(ApexArrayEntry), ARR_INIT_SIZE);
+    array->iter = apexMem_calloc(sizeof(ApexArrayEntry), ARR_INIT_SIZE);
     array->entry_size = ARR_INIT_SIZE;
     array->iter_size = ARR_INIT_SIZE;
     array->entry_count = 0;
@@ -563,7 +562,7 @@ ApexObject *apexVal_newobject(const char *name) {
     object->entries = apexMem_calloc(sizeof(ApexObjectEntry), OBJ_INIT_SIZE);
     object->size = OBJ_INIT_SIZE;
     object->count = 0;
-    object->refcount = 1;
+    object->refcount = 0;
     object->name = name;
     return object;
 }
@@ -579,9 +578,9 @@ ApexObject *apexVal_newobject(const char *name) {
  */
 void apexVal_freearray(ApexArray *array) {
     for (int i = 0; i < array->entry_size; i++) {
-        ArrayEntry *entry = array->entries[i];
+        ApexArrayEntry *entry = array->entries[i];
         while (entry) {
-            ArrayEntry *next = entry->next;
+            ApexArrayEntry *next = entry->next;
             apexVal_release(entry->key);
             apexVal_release(entry->value);
             free(entry);
@@ -629,12 +628,12 @@ void apexVal_freeobject(ApexObject *object) {
  */
 static void array_resize_entries(ApexArray *array) {
     int new_size = array->entry_size * 2;
-    ArrayEntry **new_entries = apexMem_calloc(new_size, sizeof(ApexObjectEntry *));
+    ApexArrayEntry **new_entries = apexMem_calloc(new_size, sizeof(ApexObjectEntry *));
     for (int i = 0; i < array->entry_size; i++) {
-        ArrayEntry *entry = array->entries[i];
+        ApexArrayEntry *entry = array->entries[i];
         while (entry) {
             unsigned int index = get_array_index(entry->key) % new_size;
-            ArrayEntry *next = entry->next;
+            ApexArrayEntry *next = entry->next;
             entry->next = new_entries[index];
             new_entries[index] = entry;
             entry = next;
@@ -658,7 +657,7 @@ static void array_resize_entries(ApexArray *array) {
  */
 static void array_resize_iter(ApexArray *array) {
     int new_size = array->iter_size * 2;
-    ArrayEntry **new_iter = apexMem_calloc(new_size, sizeof(ApexObjectEntry *));
+    ApexArrayEntry **new_iter = apexMem_calloc(new_size, sizeof(ApexObjectEntry *));
     for (int i = 0; i < array->iter_count; i++) {
         new_iter[i] = array->iter[i];
     }
@@ -710,7 +709,7 @@ static void object_resize(ApexObject *object) {
  */
 void apexVal_arrayset(ApexArray *array, ApexValue key, ApexValue value) {
     unsigned int index = get_array_index(key) % array->entry_size;
-    ArrayEntry *entry = array->entries[index];
+    ApexArrayEntry *entry = array->entries[index];
 
     while (entry) {
         if (value_equals(entry->key, key)) {
@@ -726,7 +725,7 @@ void apexVal_arrayset(ApexArray *array, ApexValue key, ApexValue value) {
     apexVal_setassigned(value, true);
     apexVal_retain(value);
 
-    entry = apexMem_alloc(sizeof(ArrayEntry));
+    entry = apexMem_alloc(sizeof(ApexArrayEntry));
     entry->key = key;
     entry->value = value;
     entry->next = array->entries[index];
@@ -808,7 +807,6 @@ ApexFn *apexVal_fncpy(ApexFn *fn) {
     return new_fn;
 }
 
-
 /**
  * Creates a deep copy of a given object.
  *
@@ -870,7 +868,7 @@ ApexObject *apexVal_objectcpy(ApexObject *object) {
  */
 bool apexVal_arrayget(ApexValue *value, ApexArray *array, const ApexValue key) {
     unsigned int index = get_array_index(key) % array->entry_size;
-    ArrayEntry *entry = array->entries[index];
+    ApexArrayEntry *entry = array->entries[index];
 
     while (entry) {
         if (value_equals(entry->key, key)) {
@@ -926,8 +924,8 @@ bool apexVal_objectget(ApexValue *value, ApexObject *object, const char *key) {
  */
 void apexVal_arraydel(ApexArray *array, const ApexValue key) {
     unsigned int index = get_array_index(key) % array->entry_size;
-    ArrayEntry *prev = NULL;
-    ArrayEntry *entry = array->entries[index];
+    ApexArrayEntry *prev = NULL;
+    ApexArrayEntry *entry = array->entries[index];
 
     while (entry) {
         if (value_equals(entry->key, key)) {

@@ -1,0 +1,9 @@
+fn print_usage() {
+    io:print("passman usage:");
+    io:print("    store <id> <password> - stores a password");
+    io:print("    get <id> - retrieves a password");
+}
+
+if (std:len(@args) < 2) {
+    
+}

@@ -90,7 +90,7 @@ ApexLibFn apexLib_get(const char *libname, const char *fnname) {
         }
         entry = entry->next;
     }
-    return (ApexLibFn){NULL, NULL, 0};
+    return (ApexLibFn){NULL, NULL};
 }
 
 static void load_shared_library(const char *libpath, const char *libname) {

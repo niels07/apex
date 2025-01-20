@@ -23,7 +23,6 @@ typedef enum {
 } ApexValueType;
 
 typedef struct {
-    int argc;
     char *name;
     int (*fn)(ApexVM *, int);
 } ApexCfn;
@@ -56,16 +55,16 @@ typedef struct {
     };
 } ApexValue;
 
-typedef struct ArrayEntry {
+typedef struct ApexArrayEntry {
     ApexValue key;
     ApexValue value;
-    struct ArrayEntry *next;
+    struct ApexArrayEntry *next;
     int index;
-} ArrayEntry;
+} ApexArrayEntry;
 
 struct ApexArray {
-    ArrayEntry **entries;
-    ArrayEntry **iter;
+    ApexArrayEntry **entries;
+    ApexArrayEntry **iter;
     int entry_size;
     int entry_count;
     int iter_size;
@@ -88,16 +87,75 @@ struct ApexObject {
     const char *name;
 };
 
+#define apexArray_each(arr) for (int _iter = 0; _iter < arr->iter_count;)
+#define apexArray_next(arr) (arr->iter[_iter++])
+
+/**
+ * Get the integer value from an ApexValue.
+ *
+ * @param v ApexValue containing an integer value.
+ * @return The integer value contained in the ApexValue.
+ */
 #define apexVal_int(v) (v.intval)
+
+/**
+ * Get the float value from an ApexValue.
+ *
+ * @param v ApexValue containing a float value.
+ * @return The float value contained in the ApexValue.
+ */
 #define apexVal_flt(v) (v.fltval)
+
+/**
+ * Get the double value from an ApexValue.
+ *
+ * @param v ApexValue containing a double value.
+ * @return The double value contained in the ApexValue.
+ */
 #define apexVal_dbl(v) (v.dblval)
+
+/**
+ * Get the ApexString from an ApexValue.
+ *
+ * @param v ApexValue containing an ApexString.
+ * @return The ApexString contained in the ApexValue.
+ */
 #define apexVal_str(v) (v.strval)
+
+/**
+ * Get the boolean value from an ApexValue.
+ *
+ * @param v ApexValue containing a boolean value.
+ * @return The boolean value contained in the ApexValue.
+ */
 #define apexVal_bool(v) (v.boolval)
+
+/**
+ * Get the ApexArray from an ApexValue.
+ *
+ * @param v ApexValue containing an ApexArray.
+ * @return The ApexArray contained in the ApexValue.
+ */
+#define apexVal_array(v) (v.arrval)
+
+/**
+ * Get the ApexFn from an ApexValue.
+ *
+ * @param v ApexValue containing an ApexFn.
+ * @return The ApexFn contained in the ApexValue.
+ */
 #define apexVal_fn(v) (v.fnval)
+
+/**
+ * Get the ApexValueType from an ApexValue.
+ *
+ * @param v ApexValue containing an ApexValueType.
+ * @return The ApexValueType contained in the ApexValue.
+ */
 #define apexVal_type(v) (v.type)
 
 extern ApexFn *apexVal_newfn(const char *name, char **params, int argc, bool have_variadic, int addr);
-extern ApexCfn apexVal_newcfn(char *name, int argc, int (*fn)(ApexVM *, int));
+extern ApexCfn apexVal_newcfn(char *name, int (*fn)(ApexVM *, int));
 extern const char *apexVal_typestr(ApexValue value);
 extern ApexString *apexVal_tostr(ApexValue value);
 extern void apexVal_setassigned(ApexValue value, bool is_assigned);

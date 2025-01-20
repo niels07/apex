@@ -324,6 +324,7 @@ static void skip_comments(Lexer *lexer) {
             advance(lexer);
         }
     }
+    skip_whitespace(lexer);
 }
 
 /**
@@ -521,8 +522,7 @@ Token *get_next_token(Lexer *lexer) {
     }
 
     switch (c) {
-    case '"':
-        
+    case '"':        
         return scan_str(lexer);
     case '=':
         if (peek(lexer) == '=') {

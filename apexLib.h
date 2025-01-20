@@ -6,16 +6,14 @@
 typedef struct {
     char *name;
     int (*fn)(ApexVM *, int);
-    int argc;
 } ApexLibFn;
 
 typedef struct ApexLib {
     char *name;
     ApexLibFn fn;   
-    int argc; 
 } ApexLib;
 
-#define apex_regfn(name, fn, argc) { name, fn, argc }
+#define apex_regfn(name, fn ) { name, fn }
 
 /**
  * Registers a library with the Apex runtime.
