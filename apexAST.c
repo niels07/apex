@@ -65,6 +65,7 @@ static const char *get_ast_node_type_name(ASTNodeType type) {
         case AST_NEW: return "AST_NEW";
         case AST_CLOSURE: return "AST_CLOSURE";
         case AST_OBJECT: return "AST_OBJECT";
+        case AST_OBJ_FIELD: return "AST_OBJ_FIELD";
         case AST_SWITCH: return "AST_SWITCH";
         case AST_CASE: return "AST_CASE";
         case AST_DEFAULT: return "AST_DEFAULT";

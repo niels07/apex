@@ -7,33 +7,42 @@
 #include "apexLib.h"
 #include "apexErr.h"
 
+/**
+ * Splits a string into an array of substrings using a delimiter string.
+ *
+ * @param str The string to split.
+ * @param delim The delimiter to split the string with. If not provided, a space
+ *              is used as the default delimiter.
+ * @return An array of strings, each of which is a substring of the input
+ *         string.
+ */
 int str_split(ApexVM *vm, int argc) {
     if (argc == 0 || argc > 2) {
         apexErr_runtime(vm, "function 'str:split' expects 1 or 2 arguments");
-        return 1;
-    }
-    ApexValue strval = apexVM_pop(vm);
-
-    if (apexVal_type(strval) != APEX_VAL_STR) {
-        apexErr_runtime(vm, "argument %s is not a string", apexVal_typestr(strval));
         return 1;
     }
 
     char *delim;
     if (argc == 2) {
         ApexValue delimval = apexVM_pop(vm);
-
         if (apexVal_type(delimval) != APEX_VAL_STR) {
             apexErr_runtime(vm, "argument %s is not a string", apexVal_typestr(delimval));
             return 1;
         }
-
         delim = apexVal_str(delimval)->value;
     } else {
         delim = " ";
     }
 
+    ApexValue strval = apexVM_pop(vm);
+
+    if (apexVal_type(strval) != APEX_VAL_STR) {
+        apexErr_runtime(vm, "argument %s is not a string", apexVal_typestr(strval));
+        return 1;
+    }    
+
     char *str = apexVal_str(strval)->value;
+    
     ApexArray *result = apexVal_newarray();
     size_t idx  = 0;
     char *token = strtok(str, delim);
@@ -46,6 +55,25 @@ int str_split(ApexVM *vm, int argc) {
     return 0;
 }
 
+/**
+ * Matches a regex pattern against a string and returns an array of matches.
+ *
+ * The first argument is the string to search.
+ * The second argument is the regex pattern to match.
+ *
+ * The returned array contains each match as a string.
+ *
+ * If the pattern is invalid, the function will return null and an error will
+ * be reported.
+ *
+ * If the pattern does not match the string, the returned array will be empty.
+ *
+ * The regex pattern is extended, meaning that it may contain all of the
+ * special characters described in the regex man page.
+ *
+ * The regex pattern is not anchored to the start of the string, meaning that
+ * it may match anywhere in the string.
+ */
 int str_match(ApexVM *vm, int argc) {
     // Retrieve arguments from the stack
     ApexValue patternval = apexVM_pop(vm);
@@ -109,6 +137,25 @@ int str_match(ApexVM *vm, int argc) {
     return 0;
 }
 
+/**
+ * Replaces occurrences of a regex pattern in a string with a replacement string.
+ *
+ * This function takes a string, a regex pattern, and a replacement string as input.
+ * It searches for occurrences of the pattern within the string and replaces each
+ * occurrence with the provided replacement string. The resulting string with
+ * substitutions is pushed onto the virtual machine's stack.
+ *
+ * The first argument is the string to search.
+ * The second argument is the regex pattern to match.
+ * The third argument is the replacement string.
+ *
+ * If any of the arguments are not strings, an error is reported, and the function
+ * returns immediately. If the regex pattern is invalid, an error is reported as well.
+ *
+ * @param vm A pointer to the virtual machine instance.
+ * @param argc The number of arguments passed to the function.
+ * @return 0 on success, or 1 if an error occurs.
+ */
 int str_sub(ApexVM *vm, int argc) {
     // Retrieve arguments from the stack
     ApexValue repl_val = apexVM_pop(vm);
@@ -194,6 +241,26 @@ int str_sub(ApexVM *vm, int argc) {
     return 0;
 }
 
+/**
+ * str:format formats a string using the given arguments.
+ *
+ * The first argument should be a string containing format specifiers. The
+ * remaining arguments are used to fill in the specifiers. The format
+ * specifiers are as follows:
+ *
+ * - %%s: expects a string argument
+ * - %%d: expects an integer argument
+ * - %%f: expects a float or double argument
+ * - %%%: expects no argument and produces a literal %%
+ *
+ * If any argument does not match the expected type, a runtime error is
+ * raised.
+ *
+ * @param vm A pointer to the virtual machine to evaluate in.
+ * @param argc The number of arguments to format.
+ * @return 0 if the string was formatted successfully, 1 if an error
+ *         occurred.
+ */
 int str_format(ApexVM *vm, int argc) {
     if (argc < 1) {
         apexErr_runtime(vm, "'str:format' expects at least 1 argument");
@@ -312,6 +379,16 @@ int str_format(ApexVM *vm, int argc) {
     return 0;
 }
 
+/**
+ * str:lower converts a string to lowercase.
+ *
+ * The function takes exactly 1 argument: the string to convert.
+ *
+ * The result is a new string with the same length as the input, but with all
+ * characters converted to lowercase.
+ *
+ * If the argument is not a string, an error is raised.
+ */
 int str_lower(ApexVM *vm, int argc) {
     ApexValue str_val = apexVM_pop(vm);
     if (apexVal_type(str_val) != APEX_VAL_STR) {
@@ -334,6 +411,16 @@ int str_lower(ApexVM *vm, int argc) {
     return 0;
 }
 
+/**
+ * str:upper converts a string to uppercase.
+ *
+ * The function takes exactly 1 argument: the string to convert.
+ *
+ * The result is a new string with the same length as the input, but with all
+ * characters converted to uppercase.
+ *
+ * If the argument is not a string, an error is raised.
+ */
 int str_upper(ApexVM *vm, int argc) {
     if (argc != 1) {
         apexErr_runtime(vm, "function 'str:upper' expects exactly 1 argument");

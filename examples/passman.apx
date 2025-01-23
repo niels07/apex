@@ -1,9 +1,75 @@
+
+
+Passman = {
+    entries = [],
+    master_pass = ""
+};
+
+fn Passman.new(master_pass) {
+    this.master_pass = master_pass;
+    file = io:open("pwd.txt", "r");
+    if (!file) {
+        return;
+    }
+    for (i = 0; i < std:len(file.lines); i++) {
+        line = file.lines[i];
+        data = str:split(line, ":");
+        this.entries[data[0]] = data[1];
+    }
+    file.close();
+}
+
+fn Passman.get(key) {
+    if (array:key_exists(this.entries, key)) {
+        return crypt:aes_inv(this.entries[key], this.master_pass);
+    } else {
+        return null;
+    }
+}
+
+fn Passman.store(key, pass) {
+    this.entries[key] = crypt:aes(pass, this.master_pass);
+    file = io:open("pwd.txt", "w");
+    foreach (k, v in this.entries) {
+        file.write(k + ":" + v + "\n");
+    }
+    file.close();
+}
+
 fn print_usage() {
     io:print("passman usage:");
     io:print("    store <id> <password> - stores a password");
     io:print("    get <id> - retrieves a password");
+    io:print("    list - list password entries");
 }
 
 if (std:len(@args) < 2) {
-    
+    print_usage();
+    os:exit(1);   
+}
+
+switch (@args[1]) {
+case "store":
+    if (std:len(@args) < 4) {
+        io:print("expected <id> and <password> for store");
+        os:exit(1);
+    }
+    io:write("master password > ");
+    master_pass = io:read();
+    passman = Passman.new(master_pass);
+    passman.store(@args[2], @args[3]);
+case "get":
+    if (std:len(@args) < 3) {
+        io:print("expected <id> for get");
+        os:exit(1);
+    }
+    io:write("master password > ");
+    master_pass = io:read();
+    passman = Passman.new(master_pass);
+    pass = passman.get(@args[2]);
+    if (!pass) {
+        io:print("entry for " + @args[2] + " not found");
+    } else {
+        io:print("password for " + @args[2] + ": " + pass);
+    }
 }

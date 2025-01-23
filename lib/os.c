@@ -11,6 +11,23 @@
 #include "apexLib.h"
 #include "apexMem.h"
 
+/**
+ * os:exit([status])
+ *
+ * Exits the program with the given exit status. If no status is provided,
+ * the program exits with EXIT_SUCCESS.
+ *
+ * The function expects at most one argument:
+ * - An integer representing the exit status.
+ *
+ * Example:
+ *
+ *   os:exit()
+ *   // exits the program with EXIT_SUCCESS
+ *
+ *   os:exit(1)
+ *   // exits the program with status 1
+ */
 int os_exit(ApexVM *vm, int argc) {
     if (argc == 0) {
         exit(EXIT_SUCCESS);
@@ -28,6 +45,16 @@ int os_exit(ApexVM *vm, int argc) {
     return 0;
 }
 
+/**
+ * os:remove(filename)
+ *
+ * Removes a file. Fails if the file could not be removed.
+ *
+ * Example:
+ *
+ *   os:remove("oldfile.txt")
+ *   // removes the file oldfile.txt
+ */
 int os_remove(ApexVM *vm, int argc) {
     if (argc != 1) {
         apexErr_runtime(vm, "os:remove expects exactly 1 argument");
@@ -46,6 +73,16 @@ int os_remove(ApexVM *vm, int argc) {
     return 0;
 }
 
+/**
+ * os:rename(old, new)
+ *
+ * Renames a file from old to new. Fails if the file could not be renamed.
+ *
+ * Example:
+ *
+ *   os:rename("oldfile.txt", "newfile.txt")
+ *   // renames the file oldfile.txt to newfile.txt
+ */
 int os_rename(ApexVM *vm, int argc) {
     if (argc != 2) {
         apexErr_runtime(vm, "os:rename expects exactly 2 arguments");
@@ -70,6 +107,25 @@ int os_rename(ApexVM *vm, int argc) {
     return 0;
 }
 
+/**
+ * os:time([time])
+ *
+ * Returns the time in seconds since the Unix epoch, either for the current
+ * time or for a specified time.
+ *
+ * If the optional `time` argument is provided, it should be an array with keys
+ * "year", "month", "day", "hour", "min", and "sec". If a field is not present,
+ * the corresponding value is set to 0.
+ *
+ * Example:
+ *
+ *   os:time()
+ *   // returns current time in seconds since the Unix epoch
+ *
+ *   os:time({"year": 2016, "month": 1, "day": 1})
+ *   // returns time in seconds since the Unix epoch for January 1, 2016
+ *
+ */
 int os_time(ApexVM *vm, int argc) {
     if (argc > 1) {
         apexErr_runtime(vm, "os:time expects at most 1 argument");
@@ -119,6 +175,26 @@ int os_time(ApexVM *vm, int argc) {
     return 0;
 }
 
+/**
+ * os:date(format, [time])
+ *
+ * Returns the date and time as a string, formatted according to `format`.
+ * The format string can contain any of the directives from the strftime(3)
+ * function, such as %Y, %m, %d, %H, %M, %S, etc.
+ *
+ * If the optional `time` argument is provided, it should be an integer
+ * representing the time in seconds since the epoch. If not provided, the
+ * current time is used.
+ *
+ * Example:
+ *
+ *   os:date("%Y-%m-%d %H:%M:%S")
+ *   // returns current date and time as a string
+ *
+ *   os:date("%Y-%m-%d %H:%M:%S", 1234567890)
+ *   // returns date and time for the specified time in seconds
+ *
+ */
 int os_date(ApexVM *vm, int argc) {
     if (argc < 1 || argc > 2) {
         apexErr_runtime(vm, "os:date expects 1 or 2 arguments");

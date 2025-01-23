@@ -710,7 +710,6 @@ static void object_resize(ApexObject *object) {
 void apexVal_arrayset(ApexArray *array, ApexValue key, ApexValue value) {
     unsigned int index = get_array_index(key) % array->entry_size;
     ApexArrayEntry *entry = array->entries[index];
-
     while (entry) {
         if (value_equals(entry->key, key)) {
             apexVal_release(entry->value);
@@ -729,6 +728,7 @@ void apexVal_arrayset(ApexArray *array, ApexValue key, ApexValue value) {
     entry->key = key;
     entry->value = value;
     entry->next = array->entries[index];
+    entry->index = array->iter_count;
     array->entries[index] = entry;
     array->iter[array->iter_count++] = entry;
     array->entry_count++;
@@ -769,6 +769,7 @@ void apexVal_objectset(ApexObject *object, const char *key, ApexValue value) {
 
     entry = apexMem_alloc(sizeof(ApexObjectEntry));
     apexVal_retain(value);
+    apexVal_setassigned(value, true);
     entry->key = key;
     entry->value = value;
     entry->next = object->entries[index];
@@ -808,6 +809,66 @@ ApexFn *apexVal_fncpy(ApexFn *fn) {
 }
 
 /**
+ * Creates a deep copy of a given ApexArray structure.
+ *
+ * This function allocates memory for a new ApexArray structure and duplicates
+ * the fields of the provided ApexArray, including its size, entries, and
+ * iterator. The reference count of the new array is initialized to zero. The
+ * entries are copied recursively, so that the new array does not share any
+ * memory with the original array.
+ *
+ * @param array A pointer to the ApexArray structure to be copied.
+ * @return A pointer to the newly allocated copy of the given ApexArray.
+ */
+ApexArray *apexVal_arrcpy(ApexArray *array) {
+    ApexArray *newarr = apexMem_alloc(sizeof(ApexArray));
+    newarr->entries = apexMem_calloc(sizeof(ApexArrayEntry), array->entry_size);
+    newarr->iter = apexMem_calloc(sizeof(ApexArrayEntry), array->iter_size);
+    newarr->entry_size = array->entry_size;
+    newarr->iter_size = array->iter_size;
+    newarr->entry_count = array->entry_count;
+    newarr->iter_count = array->iter_count;
+    newarr->refcount = 0;
+    newarr->is_assigned = array->is_assigned;
+
+    for (int i = 0; i < array->entry_size; i++) {
+        ApexArrayEntry *entry = array->entries[i];
+        ApexArrayEntry **newentry_ptr = &newarr->entries[i];
+
+        while (entry) {
+            ApexArrayEntry *newentry = apexMem_alloc(sizeof(ApexArrayEntry));
+            switch (entry->value.type) {
+            case APEX_VAL_OBJ: {
+                ApexObject *objcpy = apexVal_objectcpy(entry->value.objval);
+                newentry->value = apexVal_makeobj(objcpy);
+                break;
+            }
+            case APEX_VAL_FN: {
+                ApexFn *fn = apexVal_fncpy(entry->value.fnval);
+                newentry->value = apexVal_makefn(fn);
+                break;
+            } 
+            case APEX_VAL_ARR: {
+                ApexArray *array = apexVal_arrcpy(entry->value.arrval);
+                newentry->value = apexVal_makearr(array);
+                break;
+            }
+            default:
+                newentry->value = entry->value;
+            }
+            newentry->key = entry->key;
+            newentry->index = entry->index;
+            newarr->iter[entry->index] = newentry;
+            *newentry_ptr = newentry;
+            newentry_ptr = &newentry->next;
+            entry = entry->next;
+        }
+        *newentry_ptr = NULL;
+    }
+    return newarr;
+}
+
+/**
  * Creates a deep copy of a given object.
  *
  * This function allocates memory for a new ApexObject structure and initializes
@@ -834,14 +895,25 @@ ApexObject *apexVal_objectcpy(ApexObject *object) {
         while (entry) {
             ApexObjectEntry *newentry = apexMem_alloc(sizeof(ApexObjectEntry));
             newentry->key = entry->key;
-            if (entry->value.type == APEX_VAL_OBJ) {
+            switch (entry->value.type) {
+            case APEX_VAL_OBJ: {
                 ApexObject *objcpy = apexVal_objectcpy(entry->value.objval);
                 newentry->value = apexVal_makeobj(objcpy);
-            } else if (entry->value.type == APEX_VAL_FN) {
+                break;
+            } 
+            case APEX_VAL_FN: {
                 ApexFn *fn = apexVal_fncpy(entry->value.fnval);
                 newentry->value = apexVal_makefn(fn);
-            } else {
+                break;
+            } 
+            case APEX_VAL_ARR: {
+                ApexArray *arrcpy = apexVal_arrcpy(entry->value.arrval);
+                newentry->value = apexVal_makearr(arrcpy);
+                break;
+            }
+            default:
                 newentry->value = entry->value;
+                break;
             }
 
             *newentry_ptr = newentry;

@@ -225,7 +225,6 @@ static bool compile_array(ApexVM *vm, AST *node) {
         }
         current = current->next;
     }
-    printf("create array: %d\n", count);
     EMIT_OP_INT(vm, OP_CREATE_ARRAY, count);
     return true;
 }
@@ -759,7 +758,7 @@ static bool compile_object_literal(ApexVM *vm, AST *node) {
     ApexString *name = node->value.strval;
     AST *current = node->right;
     while (current) {
-        if (current->type == AST_KEY_VALUE_PAIR) {
+        if (current->type == AST_OBJ_FIELD) {
             if (!compile_expression(vm, current->left, true) || // Key
                 !compile_expression(vm, current->right, true)) { // Value
                 return false;
@@ -1061,8 +1060,8 @@ static bool compile_switch(ApexVM *vm, AST *node) {
     int end_jumps[256];
     int end_jumps_n = 0;
 
-    for (AST *case_node = node->right; case_node; case_node = case_node->right) {
-        if (case_node->type == AST_CASE) {
+    for (AST *case_node = node->right; case_node; case_node = case_node->right->right) {
+        if (case_node->type == AST_CASE) {            
             if (!compile_expression(vm, left, true) ||
                 !compile_expression(vm, case_node->left, true)) {
                 return false;
@@ -1079,8 +1078,7 @@ static bool compile_switch(ApexVM *vm, AST *node) {
                 return false;
             }
             EMIT_OP(vm, OP_JUMP);
-            end_jumps[end_jumps_n++] = vm->chunk->ins_count - 1;
-            
+            end_jumps[end_jumps_n++] = vm->chunk->ins_count - 1;            
 
             // Patch the jump to this case
             vm->chunk->ins[skip_jump].value.intval = vm->chunk->ins_count - skip_jump - 1;
@@ -1309,14 +1307,16 @@ static bool compile_statement(ApexVM *vm, AST *node) {
         return compile_function_declaration(vm, node);
 
     case AST_RETURN:
-        if (!compile_expression(vm, node->left, true)) {
+        if (node->left && !compile_expression(vm, node->left, true)) {
             return false;
         }
         EMIT_OP(vm, OP_RETURN);
         return true;
 
     case AST_BLOCK:            
-        if (!compile_statement(vm, node->right)) {
+        if (node->right && 
+            node->right->type != AST_CASE && 
+            !compile_statement(vm, node->right)) {
             return false;
         } else if (node->left) {
             return compile_statement(vm, node->left);

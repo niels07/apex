@@ -65,6 +65,7 @@ typedef enum {
     AST_NEW,
     AST_CLOSURE,
     AST_OBJECT,
+    AST_OBJ_FIELD,
     AST_SWITCH,
     AST_CASE,
     AST_DEFAULT

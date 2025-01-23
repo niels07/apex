@@ -494,7 +494,6 @@ bool apexVM_call(ApexVM *vm, ApexFn *fn, int argc) {
             value);        
     }
     stack_push(vm, apexVal_makeint(ret_addr));
-    printf("ip: %d, fn->addr: %d\n", vm->ip, fn->addr);
     vm->ip = fn->addr;     
     Ins *ins; 
     do {
@@ -1008,7 +1007,6 @@ static bool decvalue(ApexVM *vm, ApexValue *value) {
  * @return `true` on successful execution, or `false` if an error occurs.
  */
 static bool vm_execute(ApexVM *vm, Ins *ins) {
-    
     switch (ins->opcode) {
     case OP_PUSH_INT:
     case OP_PUSH_DBL:
@@ -1182,7 +1180,9 @@ static bool vm_execute(ApexVM *vm, Ins *ins) {
         ApexValue condition = stack_pop(vm);
         if (!condition.boolval) {
             ApexValue iterable = stack_pop(vm);
-            apexVal_release(iterable);
+            if (!apexVal_isassigned(iterable)) {
+                apexVal_release(iterable);
+            }
             vm->ip += ins->value.intval;
         }
         break;
@@ -1190,6 +1190,9 @@ static bool vm_execute(ApexVM *vm, Ins *ins) {
     case OP_ITER_START: {            
         ApexValue iterable = stack_pop(vm);
         if (iterable.type == APEX_VAL_ARR) {
+             if (!apexVal_isassigned(iterable)) {
+                apexVal_retain(iterable);
+            }
             stack_push(vm, apexVal_makeint(0)); // Push initial index
             stack_push(vm, iterable);          // Push iterable itself
         } else {
@@ -1352,6 +1355,11 @@ static bool vm_execute(ApexVM *vm, Ins *ins) {
         ApexValue objval = stack_pop(vm);
         ApexObject *obj = objval.objval;
         ApexValue value;
+
+        if (objval.type != APEX_VAL_OBJ && objval.type != APEX_VAL_TYPE) {
+            apexErr_runtime(vm, "attempt to get field '%s' on non object", ins->value.strval->value);
+            return false;
+        }
 
         if (!apexVal_objectget(&value, obj, ins->value.strval->value)) {
             apexErr_runtime(vm, 
@@ -1690,10 +1698,12 @@ static bool vm_execute(ApexVM *vm, Ins *ins) {
         }
         break;
     }
-    case OP_NOT: // !
-        stack_push(vm, apexVal_makebool(!stack_pop(vm).boolval));
+    case OP_NOT: { // !
+        ApexValue value = stack_pop(vm);
+        bool boolval = apexVal_tobool(value);
+        stack_push(vm, apexVal_makebool(!boolval));
         break;
-
+    }
     case OP_NEGATE: {
         ApexValue val = stack_pop(vm);
         if (val.type == APEX_VAL_INT) {

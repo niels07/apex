@@ -5,6 +5,20 @@
 #include "apexMem.h"
 #include "apexLib.h"
 
+/**
+ * Checks if a given key exists in an array.
+ *
+ * This function expects two arguments: an array and a key. It checks whether
+ * the specified key is present in the provided array and pushes a boolean
+ * result onto the virtual machine's stack indicating the presence of the key.
+ *
+ * If the number of arguments is not exactly two, or if the key is not a string,
+ * or if the first argument is not an array, a runtime error is raised.
+ *
+ * @param vm A pointer to the virtual machine.
+ * @param argc The number of arguments passed to the function.
+ * @return Returns 0 on success, or 1 if an error occurs.
+ */
 int array_key_exists(ApexVM *vm, int argc) {
     if (argc != 2) {
         apexErr_runtime(vm, "array:key_exists expects exactly 2 arguments");
@@ -29,6 +43,18 @@ int array_key_exists(ApexVM *vm, int argc) {
     return 0;
 }
 
+/**
+ * Joins an array of strings into a single string, with an optional delimiter
+ * separating the strings.
+ *
+ * The first argument to this function is an array of strings. The second
+ * argument is an optional delimiter string. If the second argument is not
+ * provided, the strings are joined without a delimiter.
+ *
+ * @param array The array of strings to join.
+ * @param delim An optional delimiter to separate the strings with.
+ * @return The joined string.
+ */
 int array_join(ApexVM *vm, int argc) {
     if (argc > 2) {
         apexErr_runtime(vm, "array:join expects at most 2 arguments");
@@ -80,6 +106,23 @@ int array_join(ApexVM *vm, int argc) {
     return 0;
 }
 
+/**
+ * Applies a given function to each element in an array and returns a new array
+ * containing the results.
+ *
+ * This function expects two arguments: an array and a function. It iterates over
+ * each element in the provided array, applies the function to the element, and
+ * collects the results in a new array. The function must accept a single argument
+ * and return a value that will be included in the resulting array.
+ *
+ * If the number of arguments is not exactly two, or if the provided function is not
+ * of type APEX_VAL_FN, or if the first argument is not an array, a runtime error
+ * is raised.
+ *
+ * @param vm A pointer to the virtual machine.
+ * @param argc The number of arguments passed to the function.
+ * @return Returns 0 on success, or 1 if an error occurs.
+ */
 int array_map(ApexVM *vm, int argc) {
     if (argc != 2) {
         apexErr_runtime(vm, "array:map expects exactly 2 arguments");

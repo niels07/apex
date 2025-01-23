@@ -1,1 +1,4 @@
-x}
+enc = crypt:aes("onetwothree", "test");
+io:print(enc);
+dec = crypt:aes_inv("27c5eb603c7950f8e68898c31b03ca05", "test");
+io:print(dec);

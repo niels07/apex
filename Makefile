@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -Werror -Wno-implicit-fallthrough -std=c99 -g -rdynamic 
+CFLAGS = -Wall -Wextra -Werror -Wno-implicit-fallthrough -std=c99 -g -rdynamic
 BIN = apex
 OBJ = main.o apexErr.o apexLex.o apexMem.o apexStr.o apexAST.o apexParse.o apexVal.o apexSym.o apexVM.o apexCode.o apexUtil.o apexLib.o
 LIB_OBJ = lib/libio.so lib/libstd.so lib/libstr.so lib/libarray.so lib/libcrypt.so lib/libos.so
@@ -59,7 +59,7 @@ lib/libarray.so: lib/array.c
 	$(CC) -shared -I . -o lib/libarray.so -fPIC lib/array.c
 
 lib/libcrypt.so: lib/crypt.c
-	$(CC) -shared -I . -o lib/libcrypt.so -fPIC lib/crypt.c -lcrypt
+	$(CC) -g -shared -I . -o lib/libcrypt.so -fPIC lib/crypt.c -lcrypt
 
 lib/libos.so: lib/os.c
 	$(CC) -shared -I . -o lib/libos.so -fPIC lib/os.c

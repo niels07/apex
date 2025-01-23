@@ -885,14 +885,18 @@ static AST *parse_object_literal(Parser *parser, ApexString *name) {
                 parser->current_token->srcloc);
             CONSUME(parser, TOKEN_IDENT, false);
             CONSUME(parser, TOKEN_EQUAL, true);
-            value = parse_expression(parser);
-
+           
+            if (parser->current_token->type == TOKEN_LBRACKET) {
+                value = parse_primary(parser);
+            } else {                
+                value = parse_expression(parser);
+            }
             AST *key_value_pair = CREATE_AST_ZERO(
-                AST_KEY_VALUE_PAIR, key, value, 
+                AST_OBJ_FIELD, key, value, 
                 parser->current_token->srcloc);
             node->right = append_ast(node->right, key_value_pair);
         }
-
+      
         if (parser->current_token->type == TOKEN_COMMA) {
             CONSUME(parser, TOKEN_COMMA, false);
         } else if (parser->current_token->type != TOKEN_RBRACE) {
@@ -1225,11 +1229,29 @@ static AST *parse_switch_statement(Parser *parser) {
 
             // Parse the case value
             AST *case_value = parse_expression(parser);
+            RETURN_ON_ERROR(case_value);
+
             CONSUME(parser, TOKEN_COLON, false);
 
-            // Parse the case body
-            AST *case_body = parse_statement(parser);
+            AST *first_stmt = NULL;
+            AST *last_stmt = NULL;
 
+            // Parse the case body
+            while (parser->current_token->type != TOKEN_RBRACE && 
+                   parser->current_token->type != TOKEN_EOF &&
+                   parser->current_token->type != TOKEN_CASE &&
+                   parser->current_token->type != TOKEN_DEFAULT) {
+                AST *stmt = parse_statement(parser);
+                RETURN_ON_ERROR(stmt);
+                if (!first_stmt) {
+                    first_stmt = stmt;
+                } else {
+                    last_stmt->right = stmt;
+                }
+                last_stmt = stmt;
+            }
+            
+            AST *case_body = CREATE_AST_ZERO(AST_BLOCK, first_stmt, NULL, srcloc);
             AST *case_node = CREATE_AST_ZERO(AST_CASE, case_value, case_body, srcloc);
             cases = append_ast(cases, case_node);
 
@@ -1244,12 +1266,29 @@ static AST *parse_switch_statement(Parser *parser) {
                 return NULL;
             }
 
+            AST *first_stmt = NULL;
+            AST *last_stmt = NULL;
+
             // Parse the default case body
-            default_case = parse_statement(parser);
+            while (parser->current_token->type != TOKEN_RBRACE && 
+                   parser->current_token->type != TOKEN_EOF &&
+                   parser->current_token->type != TOKEN_CASE &&
+                   parser->current_token->type != TOKEN_DEFAULT) {
+                AST *stmt = parse_statement(parser);
+                RETURN_ON_ERROR(stmt);
+                if (!first_stmt) {
+                    first_stmt = stmt;
+                } else {
+                    last_stmt->right = stmt;
+                }
+                last_stmt = stmt;
+            }
+            default_case = CREATE_AST_ZERO(AST_BLOCK, first_stmt, NULL, srcloc);
         } else {
             apexErr_syntax(
                 parser->lexer->srcloc,
-                "unexpected token in switch");
+                "unexpected token '%s' in switch", 
+                get_token_str(parser->current_token->type)->value);
             return NULL;
         }
     }

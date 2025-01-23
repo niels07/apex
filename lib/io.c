@@ -7,6 +7,14 @@
 #include "apexLib.h"
 #include "apexErr.h"
 
+/**
+ * io:write writes a value to the standard output.
+ *
+ * Takes exactly 1 argument:
+ * - The argument is a value to be converted to a string and printed.
+ *
+ * If the number of arguments is not exactly 1, an error is raised.
+ */
 int io_write(ApexVM *vm, int argc) {
     if (argc != 1) {
         apexErr_runtime(vm, "io:write expects exactly 1 argument");
@@ -17,6 +25,14 @@ int io_write(ApexVM *vm, int argc) {
     return 0;
 }
 
+/**
+ * io:print writes a string to the standard output followed by a newline.
+ *
+ * Takes exactly 1 argument:
+ * - The argument is a value to be converted to a string and printed.
+ *
+ * If the number of arguments is not exactly 1, an error is raised.
+ */
 int io_print(ApexVM *vm, int argc) {
     if (argc != 1) {
         apexErr_runtime(vm, "io:print expects exactly 1 argument");
@@ -27,12 +43,27 @@ int io_print(ApexVM *vm, int argc) {
     return 0;
 }
 
+/**
+ * io:read reads a line from the standard input and returns a string.
+ *
+ * Takes no arguments.
+ *
+ * If there is an error reading from the standard input, an error is raised.
+ */
 int io_read(ApexVM *vm, int argc) {
     ApexString *line = apexUtil_readline(stdin);
     apexVM_pushval(vm, apexVal_makestr(line));
     return 0;
 }
 
+/**
+ * file.write writes a string to the file.
+ *
+ * The first argument is a file object returned by file:open.
+ * The second argument is a string to write to the file.
+ *
+ * If the file is not open, an error is raised.
+ */
 int file_write(ApexVM *vm, int argc) {
     if (argc != 1) {
         apexErr_runtime(vm, "file.write expects exactly 1 argument");
@@ -59,6 +90,15 @@ int file_write(ApexVM *vm, int argc) {
     return 0;
 }
 
+/**
+ * file:close closes a file.
+ *
+ * The argument is a file object returned by file:open.
+ *
+ * If the file is not open, an error is raised.
+ *
+ * After closing the file, the file object is modified to indicate that the file is not open.
+ */
 int file_close(ApexVM *vm, int argc) {
     ApexValue objval = apexVM_pop(vm);
     ApexObject *file_obj = objval.objval;
@@ -83,21 +123,61 @@ int file_close(ApexVM *vm, int argc) {
     return 0;
 }
 
+/**
+ * io:open opens a file with the given name and mode.
+ *
+ * The first argument is the name of the file to open.
+ * The second argument is the mode in which to open the file.
+ * The mode is a string containing any of the following characters:
+ *
+ * r: open for reading
+ * w: open for writing (truncates the file)
+ * a: open for appending
+ * x: open for reading and writing (fails if the file does not exist)
+ * b: open in binary mode
+ *
+ * If the file is opened in read mode, the returned object will have a
+ * "lines" property which is an array of strings, each of which is a line
+ * from the file.
+ *
+ * The returned object will have a "write" property which is a function
+ * that takes a single argument, a string to write to the file.
+ *
+ * The returned object will have a "close" property which is a function
+ * that takes no arguments and closes the file.
+ *
+ * If the file could not be opened, the function will return null.
+ */
 int io_open(ApexVM *vm, int argc) {
     if (argc != 2) {
         apexErr_runtime(vm, "io:open expects exactly 2 arguments");
         return 1;
     }
-    ApexValue mode = apexVM_pop(vm);
-    ApexValue filename = apexVM_pop(vm);    
-    FILE *file = fopen(apexVal_str(filename)->value, apexVal_str(mode)->value);
-    if (!file) {
-        apexErr_runtime(vm, "cannot open file \"%s\"", apexVal_str(filename)->value);
+    ApexValue mode_val = apexVM_pop(vm);
+
+    if (apexVal_type(mode_val) != APEX_VAL_STR) {
+        apexErr_runtime(vm, "second argument to io:open must be a string");
         return 1;
+    }
+
+    ApexValue filename_val = apexVM_pop(vm);    
+
+    if (apexVal_type(filename_val) != APEX_VAL_STR) {
+        apexErr_runtime(vm, "first argument to io:open must be a string");
+        return 1;
+    }
+
+    char *mode = apexVal_str(mode_val)->value;
+    char *filename = apexVal_str(filename_val)->value;
+
+    FILE *file = fopen(filename, mode);
+    if (!file) {
+        apexVM_pushnull(vm);
+        return 0;
     }
     ApexObject *obj = apexVal_newobject(apexStr_new("File", 4)->value);
     apexVal_objectset(obj, apexStr_new("__file_ptr", 10)->value, apexVal_makeptr(file));
-    if (strchr(apexVal_str(mode)->value, 'r')) {
+    if (strchr(mode, 'r')) {
         ApexArray *lines = apexVal_newarray();
         char line[1024];
         int i = 0;
