@@ -35,6 +35,15 @@ static const uint8_t AES_RCON[11] = {
     0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36
 };
 
+/**
+ * Performs the SubBytes transformation on the AES state matrix.
+ *
+ * This function replaces each byte in the given 4x4 state matrix with the
+ * corresponding value from the AES S-box. This is part of the AES encryption
+ * algorithm and provides non-linearity in the cipher.
+ *
+ * @param state The 4x4 state matrix to be transformed.
+ */
 void aes_sub_bytes(uint8_t state[4][4]) {
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
@@ -43,6 +52,12 @@ void aes_sub_bytes(uint8_t state[4][4]) {
     }
 }
 
+/**
+ * Replaces each byte in the given 4x4 state matrix with the value at the same
+ * index in the inverse S-box. This is the inverse of aes_sub_bytes.
+ *
+ * @param state the 4x4 state matrix to modify
+ */
 void aes_inv_sub_bytes(uint8_t state[4][4]) {
     static const uint8_t inv_sbox[256] = {
         // Inverse S-box values
@@ -70,6 +85,17 @@ void aes_inv_sub_bytes(uint8_t state[4][4]) {
     }
 }
 
+/**
+ * Shift Rows transformation for AES encryption.
+ *
+ * This function applies the Shift Rows transformation to the state matrix,
+ * which is part of the AES encryption algorithm. It cyclically shifts the
+ * last three rows of the state matrix to the left by 1, 2, and 3 positions,
+ * respectively. The first row remains unchanged.
+ *
+ * @param state The state matrix to be transformed, which is a 4x4 matrix of
+ *              bytes.
+ */
 void aes_shift_rows(uint8_t state[4][4]) {
     uint8_t temp;
     temp = state[1][0];
@@ -92,6 +118,16 @@ void aes_shift_rows(uint8_t state[4][4]) {
     state[3][0] = temp;
 }
 
+/**
+ * Inverse Shift Rows transformation for AES decryption.
+ *
+ * This function applies the inverse Shift Rows transformation to the state
+ * matrix, which is part of the AES decryption algorithm. It takes the state
+ * matrix as input, and produces the transformed state matrix as output.
+ *
+ * @param state The state matrix to be transformed, which is a 4x4 matrix of
+ *              bytes.
+ */
 void aes_inv_shift_rows(uint8_t state[4][4]) {
     uint8_t temp;
 
@@ -118,6 +154,14 @@ void aes_inv_shift_rows(uint8_t state[4][4]) {
     state[3][3] = temp;
 }
 
+/**
+ * Add a round key to the AES state.
+ *
+ * This function takes two arguments: the AES state, which is a 4x4 matrix of
+ * bytes, and a round key, which is a 16-byte array. The function modifies the
+ * AES state by XORing the round key into the state, performing the add-round-key
+ * step of the AES algorithm.
+ */
 void aes_add_round_key(uint8_t state[4][4], const uint8_t *round_key) {
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
@@ -126,6 +170,21 @@ void aes_add_round_key(uint8_t state[4][4], const uint8_t *round_key) {
     }
 }
 
+/**
+ * Multiply two values in the Galois Field GF(2^8) used by AES.
+ *
+ * This function implements the multiplication operation for two values
+ * in the Galois Field GF(2^8) used by AES. It takes two arguments, which
+ * are the two values to be multiplied. The function returns the product
+ * of the two values.
+ *
+ * The multiplication operation is implemented according to the
+ * specification of the AES encryption algorithm.
+ *
+ * @param x The first value to be multiplied, which should be a byte (8 bits).
+ * @param y The second value to be multiplied, which should be a byte (8 bits).
+ * @return The product of the two values, which is also a byte (8 bits).
+ */
 uint8_t aes_gf_mul(uint8_t x, uint8_t y) {
     uint8_t result = 0;
     while (y) {
@@ -136,6 +195,16 @@ uint8_t aes_gf_mul(uint8_t x, uint8_t y) {
     return result;
 }
 
+/**
+ * Mix Columns transformation for AES encryption.
+ *
+ * This function applies the Mix Columns transformation to the state
+ * matrix, which is part of the AES encryption algorithm. It takes the state
+ * matrix as input and produces the transformed state matrix as output.
+ *
+ * @param state The state matrix to be transformed, which is a 4x4 matrix of
+ *              bytes.
+ */
 void aes_mix_columns(uint8_t state[4][4]) {
     uint8_t temp[4];
     for (int i = 0; i < 4; i++) {
@@ -409,6 +478,14 @@ int crypt_aes_inv(ApexVM *vm, int argc) {
     return 0;
 }
 
+/**
+ * Hashes a string using the blowfish hash algorithm.
+ *
+ * This function takes a single string argument and returns its hash using the
+ * blowfish hash algorithm. The hash is salted with a random salt.
+ *
+ * The function returns the hashed string.
+ */
 int crypt_hash(ApexVM *vm, int argc) {
     if (argc != 1) {
         apexErr_runtime(vm, "crypt:hash expects exactly 1 argument");

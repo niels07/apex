@@ -48,6 +48,7 @@ typedef enum {
     TOKEN_AND,
     TOKEN_PIPE,
     TOKEN_OR,
+    TOKEN_QUESTION,
     TOKEN_BREAK,
     TOKEN_CONTINUE,
     TOKEN_LPAREN,

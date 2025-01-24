@@ -52,6 +52,7 @@ static TokenStr tk2str[] = {
     {"&&", 2}, 
     {"|", 1}, 
     {"||", 2},
+    {"?", 1},
     {"break", 5},
     {"continue", 8},
     {"(", 1},
@@ -87,6 +88,7 @@ static ApexString *IF_STR, *ELIF_STR, *ELSE_STR,
     *LESS_STR, *GREATER_STR, *LESS_EQUAL_STR, *GREATER_EQUAL_STR, 
     *NOT_STR,
     *AMP_STR, *AND_STR, *PIPE_STR, *OR_STR,
+    *QUESTION_STR,
     *LPAREN_STR, *RPAREN_STR, 
     *LBRACE_STR, *RBRACE_STR, 
     *LBRACKET_STR, *RBRACKET_STR,
@@ -142,6 +144,7 @@ static void init_lexer_globals() {
     AND_STR = apexStr_new("&&", 2);
     PIPE_STR = apexStr_new("|", 1);
     OR_STR = apexStr_new("||", 2);
+    QUESTION_STR = apexStr_new("?", 1);
     LPAREN_STR = apexStr_new("(", 1);
     RPAREN_STR = apexStr_new(")", 1);
     LBRACE_STR = apexStr_new("{", 1);
@@ -569,6 +572,8 @@ Token *get_next_token(Lexer *lexer) {
             return create_token(lexer, TOKEN_MOD_EQUAL, MOD_EQUAL_STR);
         }
         return create_token(lexer, TOKEN_PERCENT, MOD_STR);
+    case '?':
+        return create_token(lexer, TOKEN_QUESTION, QUESTION_STR);
     case '(': 
         return create_token(lexer, TOKEN_LPAREN, LPAREN_STR);
     case ')': 

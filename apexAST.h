@@ -40,6 +40,7 @@ typedef enum {
     AST_VARIADIC,
     AST_ASSIGNMENT,
     AST_BLOCK,
+    AST_TERNARY,
     AST_IF,
     AST_WHILE,
     AST_FOR,

@@ -905,6 +905,38 @@ static bool compile_expression(ApexVM *vm, AST *node, bool result_used) {
         break;
     }
 
+    case AST_TERNARY: {
+            // Compile the condition
+            if (!compile_expression(vm, node->left, true)) {
+                return false;
+            }
+
+            // Emit jump if false for the condition
+            EMIT_OP(vm, OP_JUMP_IF_FALSE);
+            int false_jump_idx = vm->chunk->ins_count - 1;
+
+            // Compile the true branch
+            if (!compile_expression(vm, node->right, true)) {
+                return false;
+            }
+
+            // Emit a jump to skip the false branch
+            EMIT_OP(vm, OP_JUMP);
+            int end_jump_idx = vm->chunk->ins_count - 1;
+
+            // Patch the false jump to jump here
+            vm->chunk->ins[false_jump_idx].value.intval = vm->chunk->ins_count - false_jump_idx - 1;
+
+            // Compile the false branch
+            if (!compile_expression(vm, node->value.ast_node, true)) {
+                return false;
+            }
+
+            // Patch the end jump to jump here
+            vm->chunk->ins[end_jump_idx].value.intval = vm->chunk->ins_count - end_jump_idx - 1;
+            break;
+        }
+
     case AST_VAR:
         compile_variable(vm, node, false);        
         break;
