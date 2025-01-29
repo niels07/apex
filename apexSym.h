@@ -8,28 +8,40 @@
 
 typedef unsigned int SymbolAddr;
 
+/**
+ * Represents a symbol in the symbol table.
+ */
 typedef struct Symbol {
-    const char *name;
-    SymbolAddr addr;
-    ApexValue value;
-    struct Symbol *next;
+    const char *name;      /** Name of the symbol */
+    SymbolAddr addr;       /** Address of the symbol */
+    ApexValue value;       /** Value associated with the symbol */
+    struct Symbol *next;   /** Pointer to the next symbol in the linked list */
 } Symbol;
 
+/**
+ * Represents a symbol table.
+ */
 typedef struct {
-    Symbol **symbols;
-    int count;
-    int size;
-    float resize_threshold;
+    Symbol **symbols;      /** Array of pointers to symbols */
+    int count;             /** Number of symbols in the table */
+    int size;              /** Size of the symbols array */
+    float resize_threshold; /** Threshold for resizing the table */
 } SymbolTable;
 
+/**
+ * Represents a local scope containing a symbol table.
+ */
 typedef struct LocalScope {
-    SymbolTable table;
-    struct LocalScope *next;
-    SymbolAddr next_addr;
+    SymbolTable table;     /** Symbol table for the local scope */
+    struct LocalScope *next; /** Pointer to the next local scope */
+    SymbolAddr next_addr;  /** Next available address for symbols */
 } LocalScope;
 
+/**
+ * Represents a stack of local scopes.
+ */
 typedef struct ScopeStack {
-    LocalScope *top;
+    LocalScope *top;       /** Pointer to the top local scope on the stack */
 } ScopeStack;
 
 extern void init_symbol_table(SymbolTable *table);

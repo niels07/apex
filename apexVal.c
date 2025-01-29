@@ -264,7 +264,7 @@ ApexString *apexVal_tostr(ApexValue value) {
     }
     case APEX_VAL_DBL: {
         char buf[250];
-        sprintf(buf, "%.17g", apexVal_dbl(value));
+        sprintf(buf, "%.14g", apexVal_dbl(value));
         return apexStr_new(buf, strlen(buf));
     }
     case APEX_VAL_STR:

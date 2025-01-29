@@ -49,6 +49,7 @@ static const char *get_ast_node_type_name(ASTNodeType type) {
         case AST_FN_DECL: return "AST_FN_DECL";
         case AST_FN_CALL: return "AST_FN_CALL";
         case AST_LIB_CALL: return "AST_LIB_CALL";
+        case AST_LIB_MEMBER: return "AST_LIB_MEMBER";
         case AST_PARAMETER_LIST: return "AST_PARAMETER_LIST";
         case AST_ARGUMENT_LIST: return "AST_ARGUMENT_LIST";
         case AST_RETURN: return "AST_RETURN";

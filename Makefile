@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -Werror -Wno-implicit-fallthrough -std=c99 -g -rdynamic
 BIN = apex
 OBJ = main.o apexErr.o apexLex.o apexMem.o apexStr.o apexAST.o apexParse.o apexVal.o apexSym.o apexVM.o apexCode.o apexUtil.o apexLib.o
-LIB_OBJ = lib/libio.so lib/libstd.so lib/libstr.so lib/libarray.so lib/libcrypt.so lib/libos.so
+LIB_OBJ = lib/libio.so lib/libstd.so lib/libstr.so lib/libarray.so lib/libcrypt.so lib/libos.so lib/libmath.so
 
 all: $(OBJ) $(LIB_OBJ)
 	$(CC) $(CFLAGS) -I . $(OBJ) $(LIB_OBJ) -o $(BIN) -lm
@@ -63,6 +63,9 @@ lib/libcrypt.so: lib/crypt.c
 
 lib/libos.so: lib/os.c
 	$(CC) -shared -I . -o lib/libos.so -fPIC lib/os.c
+
+lib/libmath.so: lib/math.c
+	$(CC) -shared -I . -o lib/libmath.so -fPIC lib/math.c
 
 clean:
 	rm -f $(OBJ)

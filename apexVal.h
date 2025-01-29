@@ -7,84 +7,114 @@
 struct ApexVM; 
 typedef struct ApexVM ApexVM;
 
+/**
+ * Enum type to represent the type of an ApexValue.
+ */
 typedef enum {
-    APEX_VAL_INT,
-    APEX_VAL_FLT,
-    APEX_VAL_DBL,
-    APEX_VAL_STR,
-    APEX_VAL_BOOL,
-    APEX_VAL_FN,
-    APEX_VAL_CFN,
-    APEX_VAL_PTR,
-    APEX_VAL_ARR,
-    APEX_VAL_TYPE,
-    APEX_VAL_OBJ,
-    APEX_VAL_NULL
+    APEX_VAL_INT, /** Integer value */
+    APEX_VAL_FLT, /** Float value */
+    APEX_VAL_DBL, /** Double value */
+    APEX_VAL_STR, /** String value */
+    APEX_VAL_BOOL, /** Boolean value */
+    APEX_VAL_FN, /** Function value */
+    APEX_VAL_CFN, /** CFunction value */
+    APEX_VAL_PTR, /** Pointer value */
+    APEX_VAL_ARR, /** Array value */
+    APEX_VAL_TYPE, /** Type value */
+    APEX_VAL_OBJ, /** Object value */
+    APEX_VAL_NULL /** Null value */
 } ApexValueType;
 
+/**
+ * CFunction struct to represent a C function
+ */
 typedef struct {
-    char *name;
-    int (*fn)(ApexVM *, int);
+    char *name; /** The cfunction name */
+    int (*fn)(ApexVM *, int); /** The cfunction pointer */
 } ApexCfn;
 
+/**
+ * Function struct to represent an Apex function
+ */
 typedef struct {
-    const char *name;
-    char **params;
-    int argc;
-    int addr;
-    int refcount;
-    bool have_variadic;
+    const char *name; /** The function name */
+    char **params; /** The function parameters */
+    int argc; /** The number of parameters */
+    int addr; /** The address of the function */
+    int refcount; /** The number of references to the function */
+    bool have_variadic; /** Whether the function has variadic arguments */
 } ApexFn;
 
+/**
+ * Array struct to represent an array value
+ */
 typedef struct ApexArray ApexArray;
+/**
+ * Object struct to represent an object value
+ */
 typedef struct ApexObject ApexObject;
 
+/**
+ * Union to represent a value of any type
+ */
 typedef struct {
-    ApexValueType type;
+    ApexValueType type; /** The type of the value */
     union {
-        int intval;
-        float fltval;
-        double dblval;
-        ApexString *strval;
-        bool boolval;
-        ApexFn *fnval;
-        ApexCfn cfnval;
-        void *ptrval;
-        ApexArray *arrval;
-        ApexObject *objval;
+        int intval; /** Integer value */
+        float fltval; /** Float value */
+        double dblval; /** Double value */
+        ApexString *strval; /** String value */
+        bool boolval; /** Boolean value */
+        ApexFn *fnval; /** Function value */
+        ApexCfn cfnval; /** CFunction value */
+        void *ptrval; /** Pointer value */
+        ApexArray *arrval; /** Array value */
+        ApexObject *objval; /** Object value */
     };
 } ApexValue;
 
+/**
+ * ArrayEntry struct to represent an entry in an array
+ */
 typedef struct ApexArrayEntry {
-    ApexValue key;
-    ApexValue value;
-    struct ApexArrayEntry *next;
-    int index;
+    ApexValue key; /** The key of the entry */
+    ApexValue value; /** The value of the entry */
+    struct ApexArrayEntry *next; /** The next entry */
+    int index; /** The index of the entry */
 } ApexArrayEntry;
 
+/**
+ * ApexArray struct to represent an array
+ */
 struct ApexArray {
-    ApexArrayEntry **entries;
-    ApexArrayEntry **iter;
-    int entry_size;
-    int entry_count;
-    int iter_size;
-    int iter_count;
-    int refcount;
-    bool is_assigned;
+    ApexArrayEntry **entries; /** The entries of the array */
+    ApexArrayEntry **iter; /** The iterator of the array */
+    int entry_size; /** The number of entries */
+    int entry_count; /** The number of entries */
+    int iter_size; /** The number of entries in the iterator */
+    int iter_count; /** The number of entries in the iterator */
+    int refcount; /** The number of references to the array */
+    bool is_assigned; /** Whether the array has been assigned */
 };
 
+/**
+ * ObjectEntry struct to represent an entry in an object
+ */
 typedef struct ApexObjectEntry {
-    const char *key;
-    ApexValue value;
-    struct ApexObjectEntry *next;
+    const char *key; /** The key of the entry */
+    ApexValue value; /** The value of the entry */
+    struct ApexObjectEntry *next; /** The next entry */
 } ApexObjectEntry;
 
+/**
+ * ApexObject struct to represent an object
+ */
 struct ApexObject {
-    ApexObjectEntry **entries;
-    int size;
-    int count;
-    int refcount;
-    const char *name;
+    ApexObjectEntry **entries; /** The entries of the object */
+    int size; /** The size of the object */
+    int count; /** The number of entries */
+    int refcount; /** The number of references to the object */
+    const char *name; /** The name of the object */
 };
 
 #define apexArray_each(arr) for (int _iter = 0; _iter < arr->iter_count;)

@@ -4,84 +4,96 @@
 #include <stdbool.h>
 #include "apexStr.h"
 
+/**
+ * Represents a source location in the source code.
+ */
 typedef struct {
-    int lineno;
-    const char *filename;
+    int lineno;            /**< Line number in the source file */
+    const char *filename;  /**< Name of the source file */
 } SrcLoc;
 
+/**
+ * Enumeration of token types recognized by the lexer.
+ */
 typedef enum {
-    TOKEN_IDENT,
-    TOKEN_INT,
-    TOKEN_DBL,
-    TOKEN_STR,
-    TOKEN_NULL,
-    TOKEN_IF,
-    TOKEN_ELIF,
-    TOKEN_ELSE,
-    TOKEN_FN,
-    TOKEN_FOR,
-    TOKEN_WHILE,
-    TOKEN_FOREACH,
-    TOKEN_IN,
-    TOKEN_RETURN,
-    TOKEN_PLUS,
-    TOKEN_MINUS,
-    TOKEN_STAR,
-    TOKEN_SLASH,
-    TOKEN_PERCENT,
-    TOKEN_PLUS_PLUS,
-    TOKEN_MINUS_MINUS,
-    TOKEN_EQUAL,
-    TOKEN_PLUS_EQUAL,
-    TOKEN_MINUS_EQUAL,
-    TOKEN_STAR_EQUAL,
-    TOKEN_SLASH_EQUAL,
-    TOKEN_MOD_EQUAL,
-    TOKEN_EQUAL_EQUAL,
-    TOKEN_NOT_EQUAL,
-    TOKEN_LESS,
-    TOKEN_GREATER,
-    TOKEN_LESS_EQUAL,
-    TOKEN_GREATER_EQUAL,
-    TOKEN_NOT,
-    TOKEN_AMP,
-    TOKEN_AND,
-    TOKEN_PIPE,
-    TOKEN_OR,
-    TOKEN_QUESTION,
-    TOKEN_BREAK,
-    TOKEN_CONTINUE,
-    TOKEN_LPAREN,
-    TOKEN_RPAREN,
-    TOKEN_LBRACE,
-    TOKEN_RBRACE,
-    TOKEN_LBRACKET,
-    TOKEN_RBRACKET,
-    TOKEN_COMMA,
-    TOKEN_SEMICOLON,
-    TOKEN_TRUE,
-    TOKEN_FALSE,
-    TOKEN_ARROW,
-    TOKEN_INCLUDE,
-    TOKEN_DOT,
-    TOKEN_COLON,
-    TOKEN_SWITCH,
-    TOKEN_CASE,
-    TOKEN_DEFAULT,
-    TOKEN_EOF
+    TOKEN_IDENT,           /** Identifier token */
+    TOKEN_INT,             /** Integer token */
+    TOKEN_DBL,             /** Double (floating point) token */
+    TOKEN_STR,             /** String token */
+    TOKEN_NULL,            /** Null token */
+    TOKEN_IF,              /** 'if' keyword */
+    TOKEN_ELIF,            /** 'elif' keyword */
+    TOKEN_ELSE,            /** 'else' keyword */
+    TOKEN_FN,              /** 'fn' keyword */
+    TOKEN_FOR,             /** 'for' keyword */
+    TOKEN_WHILE,           /** 'while' keyword */
+    TOKEN_FOREACH,         /** 'foreach' keyword */
+    TOKEN_IN,              /** 'in' keyword */
+    TOKEN_RETURN,          /** 'return' keyword */
+    TOKEN_PLUS,            /** Plus operator '+' */
+    TOKEN_MINUS,           /** Minus operator '-' */
+    TOKEN_STAR,            /** Multiplication operator '*' */
+    TOKEN_SLASH,           /** Division operator '/' */
+    TOKEN_PERCENT,         /** Modulo operator '%' */
+    TOKEN_PLUS_PLUS,       /** Increment operator '++' */
+    TOKEN_MINUS_MINUS,     /** Decrement operator '--' */
+    TOKEN_EQUAL,           /** Assignment operator '=' */
+    TOKEN_PLUS_EQUAL,      /** Addition assignment operator '+=' */
+    TOKEN_MINUS_EQUAL,     /** Subtraction assignment operator '-=' */
+    TOKEN_STAR_EQUAL,      /** Multiplication assignment operator '*=' */
+    TOKEN_SLASH_EQUAL,     /** Division assignment operator '/=' */
+    TOKEN_MOD_EQUAL,       /** Modulo assignment operator '%=' */
+    TOKEN_EQUAL_EQUAL,     /** Equality operator '==' */
+    TOKEN_NOT_EQUAL,       /** Inequality operator '!=' */
+    TOKEN_LESS,            /** Less than operator '<' */
+    TOKEN_GREATER,         /** Greater than operator '>' */
+    TOKEN_LESS_EQUAL,      /** Less than or equal operator '<=' */
+    TOKEN_GREATER_EQUAL,   /** Greater than or equal operator '>=' */
+    TOKEN_NOT,             /** Logical NOT operator '!' */
+    TOKEN_AMP,             /** Bitwise AND operator '&' */
+    TOKEN_AND,             /** Logical AND operator '&&' */
+    TOKEN_PIPE,            /** Bitwise OR operator '|' */
+    TOKEN_OR,              /** Logical OR operator '||' */
+    TOKEN_QUESTION,        /** Ternary question mark '?' */
+    TOKEN_BREAK,           /** 'break' keyword */
+    TOKEN_CONTINUE,        /** 'continue' keyword */
+    TOKEN_LPAREN,          /** Left parenthesis '(' */
+    TOKEN_RPAREN,          /** Right parenthesis ')' */
+    TOKEN_LBRACE,          /** Left brace '{' */
+    TOKEN_RBRACE,          /** Right brace '}' */
+    TOKEN_LBRACKET,        /** Left bracket '[' */
+    TOKEN_RBRACKET,        /** Right bracket ']' */
+    TOKEN_COMMA,           /** Comma ',' */
+    TOKEN_SEMICOLON,       /** Semicolon ';' */
+    TOKEN_TRUE,            /** 'true' keyword */
+    TOKEN_FALSE,           /** 'false' keyword */
+    TOKEN_ARROW,           /** Arrow '=>' */
+    TOKEN_INCLUDE,         /** 'include' keyword */
+    TOKEN_DOT,             /** Dot '.' */
+    TOKEN_COLON,           /** Colon ':' */
+    TOKEN_SWITCH,          /** 'switch' keyword */
+    TOKEN_CASE,            /** 'case' keyword */
+    TOKEN_DEFAULT,         /** 'default' keyword */
+    TOKEN_EOF              /** End of file token */
 } TokenType;
 
+/**
+ * Represents a token produced by the lexer.
+ */
 typedef struct {
-    TokenType type;
-    ApexString *str;
-    SrcLoc srcloc;
+    TokenType type;       /** The type of the token */
+    ApexString *str;      /** The string representation of the token */
+    SrcLoc srcloc;        /** The source location of the token */
 } Token;
 
+/**
+ * Represents the lexer state while processing source code.
+ */
 typedef struct {
-    char *source;
-    int length;
-    int position;
-    SrcLoc srcloc;
+    char *source;        /** The source code being lexed */
+    int length;          /** Length of the source code */
+    int position;        /** Current position in the source code */
+    SrcLoc srcloc;       /** Current source location */
 } Lexer;
 
 extern void apexLex_feedline(Lexer *lexer, const char *line);

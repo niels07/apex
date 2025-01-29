@@ -67,6 +67,7 @@ static const char *opcode_to_string(OpCode opcode) {
         case OP_LE: return "OP_LE";
         case OP_GT: return "OP_GT";
         case OP_GE: return "OP_GE";
+        case OP_GET_LIB_MEMBER: return "OP_GET_LIB_MEMBER";
         case OP_SET_MEMBER: return "OP_SET_MEMBER";
         case OP_GET_MEMBER: return "OP_GET_MEMBER";
         case OP_CALL_MEMBER: return "OP_CALL_MEMBER";
@@ -844,7 +845,7 @@ static ApexValue vm_mod(ApexVM *vm, ApexValue a, ApexValue b) {
  * 
  * @return An ApexValue of type boolean representing the result of the comparison.
  */
-static ApexValue cmp(ApexValue a, ApexValue b, OpCode opcode) {
+static ApexValue vm_cmp(ApexVM *vm, ApexValue a, ApexValue b, OpCode opcode) {
 #define CMP_NUMS() do { \
     switch (opcode) { \
     case OP_EQ: result = left == right; break; \
@@ -857,6 +858,23 @@ static ApexValue cmp(ApexValue a, ApexValue b, OpCode opcode) {
     } \
 } while (0)
     bool result = false;
+    if ((a.type != APEX_VAL_INT &&
+         a.type != APEX_VAL_FLT &&
+         a.type != APEX_VAL_DBL) ||
+        (b.type != APEX_VAL_INT &&
+         b.type != APEX_VAL_FLT &&
+         b.type != APEX_VAL_DBL)) {
+        if (opcode == OP_LT || 
+            opcode == OP_LE || 
+            opcode == OP_GT || 
+            opcode == OP_GE) {
+            apexErr_runtime(vm, 
+                "cannot compare %s to %s", 
+                apexVal_typestr(a), 
+                apexVal_typestr(b));
+            return apexVal_makenull();
+        }
+    }
     if (a.type == APEX_VAL_INT && b.type == APEX_VAL_INT) {
         int left = a.intval;
         int right = b.intval;
@@ -1737,15 +1755,28 @@ static bool vm_execute(ApexVM *vm, Ins *ins) {
         ApexValue lib_name_val = stack_pop(vm);
         const char *lib_name = lib_name_val.strval->value;
         const char *fn_name = fn_name_val.strval->value;
-        ApexLibFn lib_fn = apexLib_get(lib_name, fn_name);
-        if (!lib_fn.name) {
+        ApexLibData lib_data = apexLib_get(lib_name, fn_name);
+        if (!lib_data.name || lib_data.is_var) {
             apexErr_runtime(vm, "undefined library function '%s:%s'", lib_name, fn_name);
             return false;
         }
         int argc = ins->value.intval;            
-        if (lib_fn.fn(vm, argc) == 1) {
+        if (lib_data.fn(vm, argc) == 1) {
             return false;
         }
+        break;
+    }
+    case OP_GET_LIB_MEMBER: {
+        ApexValue member_name_val = stack_pop(vm);
+        ApexValue lib_name_val = stack_pop(vm);
+        char *lib_name = lib_name_val.strval->value;
+        char *member_name = member_name_val.strval->value;
+        ApexLibData lib_data = apexLib_get(lib_name, member_name);
+        if (!lib_data.name || !lib_data.is_var) {
+            apexErr_runtime(vm, "undefined library member '%s:%s'", lib_name, member_name);
+            return false;
+        }
+        apexVM_pushval(vm, *lib_data.var);
         break;
     }
     case OP_FUNCTION_START:
@@ -1764,7 +1795,10 @@ static bool vm_execute(ApexVM *vm, Ins *ins) {
     case OP_LE:
     case OP_GT:
     case OP_GE: {
-        ApexValue value = cmp(stack_pop(vm), stack_pop(vm), ins->opcode);
+        ApexValue value = vm_cmp(vm, stack_pop(vm), stack_pop(vm), ins->opcode);
+        if (value.type == APEX_VAL_NULL) {
+            return false;
+        }
         stack_push(vm, value);
         break;
     }

@@ -36,11 +36,32 @@ fn Passman.store(key, pass) {
     file.close();
 }
 
+fn Passman.generate(length) {
+    capital_letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
+    low_letters = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"];
+    numbers = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    pass = "";
+
+    for (i = 0; i < length; i++) {
+        x = math:random(3);
+        switch(x) {
+        case 1:
+            pass = pass + capital_letters[math:random(std:len(capital_letters) - 1)];
+        case 2:
+            pass = pass + low_letters[math:random(std:len(low_letters) - 1)];
+        case 3:
+            pass = pass + std:str(numbers[math:random(std:len(numbers) - 1)]);
+        }
+    }
+    return pass;
+}
+
 fn print_usage() {
     io:print("passman usage:");
     io:print("    store <id> <password> - stores a password");
     io:print("    get <id> - retrieves a password");
     io:print("    list - list password entries");
+    io:print("    generate <length> - generate a random password of <length>");
 }
 
 if (std:len(@args) < 2) {
@@ -72,4 +93,11 @@ case "get":
     } else {
         io:print("password for " + @args[2] + ": " + pass);
     }
+case "generate":
+    if (std:len(@args) < 3) {
+        io:print("expected <length> for generate");
+        os:exit(1);
+    }
+    pass = Passman.generate(std:int(@args[2]));
+    io:print(pass);
 }

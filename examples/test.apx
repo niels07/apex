@@ -1,2 +1,19 @@
-foo = crypt:aes("foo", "bar");
-io:print(foo);
+capital_letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
+low_letters = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"];
+numbers = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+length = 10;
+pass = "";
+
+for (i = 0; i < length; i++) {
+    x = math:random(3);
+    switch(x) {
+    case 1:
+        pass = pass + capital_letters[math:random(std:len(capital_letters))];
+    case 2:
+        pass = pass + low_letters[math:random(std:len(low_letters))];
+    case 3:
+        pass = pass + std:str(numbers[math:random(std:len(numbers))]);
+    }
+}
+
+io:print(pass);

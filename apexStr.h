@@ -3,9 +3,25 @@
 
 #include <stdio.h>
 
+/**
+ * @brief A structure representing a string in the Apex language.
+ *
+ * This structure represents a string in the Apex language. It contains the
+ * string's value and length, as well as a pointer to the next string in the
+ * linked list.
+ */
 typedef struct ApexString {
+    /**
+     * @brief The string's value.
+     */
     char *value;
+    /**
+     * @brief The string's length.
+     */
     size_t len;
+    /**
+     * @brief A pointer to the next string in the linked list.
+     */
     struct ApexString *next;
 } ApexString;
 

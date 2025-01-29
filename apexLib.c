@@ -17,7 +17,7 @@
 
 typedef struct LibEntry {
     const char *key;
-    ApexLibFn fn;
+    ApexLibData data;
     struct LibEntry *next;
 } LibEntry;
 
@@ -51,14 +51,14 @@ static const char *LIB_PATHS[] = {
  * @param key The key associated with the function to be added.
  * @param fn The function pointer to be stored in the library table.
  */
-void apexLib_add(const char *libname, const char *fnname, ApexLibFn fn) {
+void apexLib_add(const char *libname, const char *fnname, ApexLibData data) {
     char key[1024];
     snprintf(key, sizeof(key), "%s:%s", libname, fnname);
     unsigned int index = apexUtil_hash(key) % LIB_TABLE_SIZE;
     LibEntry *entry = apexMem_alloc(sizeof(LibEntry));
 
     entry->key = apexStr_new(key, strlen(key))->value;
-    entry->fn = fn;
+    entry->data = data;
     entry->next = lib_table[index];
     lib_table[index] = entry;
 }
@@ -78,7 +78,7 @@ void apexLib_add(const char *libname, const char *fnname, ApexLibFn fn) {
  * @return The function pointer associated with the library name and function
  *         name if found, otherwise NULL.
  */
-ApexLibFn apexLib_get(const char *libname, const char *fnname) {
+ApexLibData apexLib_get(const char *libname, const char *fnname) {
     char key[1024];
     snprintf(key, sizeof(key), "%s:%s", libname, fnname);
     ApexString *keystr = apexStr_new(key, strlen(key));
@@ -86,11 +86,11 @@ ApexLibFn apexLib_get(const char *libname, const char *fnname) {
     LibEntry *entry = lib_table[index];
     while (entry) {
         if (entry->key == keystr->value) {
-            return entry->fn;
+            return entry->data;
         }
         entry = entry->next;
     }
-    return (ApexLibFn){NULL, NULL};
+    return (ApexLibData){NULL, false, {.fn = NULL}};
 }
 
 static void load_shared_library(const char *libpath, const char *libname) {

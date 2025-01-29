@@ -400,21 +400,23 @@ static AST *parse_function_call(Parser *parser) {
         parser->current_token->srcloc);
 }
 
+
 /**
- * Parses a library function call from the input tokens.
+ * Parses a library member from the input tokens.
  *
- * This function assumes that the current token is the start of a library call,
- * and will parse the library name, function name, and arguments. The library
- * name is expected to be an identifier followed by a colon. The function name
+ * This function assumes that the current token is the start of a library member,
+ * and will parse the library name, member name, and arguments. The library
+ * name is expected to be an identifier followed by a colon. The member name
  * is expected to be an identifier followed by an opening parenthesis. The
  * arguments are parsed as a list of expressions. If the syntax is incorrect
- * at any point, a syntax error is reported.
+ * at any point, a syntax error is reported, and an error node is returned if
+ * allowed by the parser settings.
  *
  * @param parser A pointer to the Parser containing the tokens to be parsed.
  * @return A pointer to an AST node representing the parsed library call, or
  *         an error node if a syntax error is encountered.
  */
-static AST *parse_library_call(Parser *parser) {
+static AST *parse_library_member(Parser *parser) {
     AST *lib_name = CREATE_AST_STR(
         AST_VAR, NULL, NULL,
         parser->current_token->str,
@@ -423,21 +425,26 @@ static AST *parse_library_call(Parser *parser) {
     CONSUME(parser, TOKEN_COLON, false);
 
     if (!match(parser, TOKEN_IDENT)) {
-        apexErr_syntax(parser->lexer->srcloc, "expected function name after ':'");
+        apexErr_syntax(parser->lexer->srcloc, "expected identifier after ':'");
         return parser->allow_incomplete ? create_error_ast() : NULL;
     }
 
-    AST *fn_name = CREATE_AST_STR(
+    AST *member_name = CREATE_AST_STR(
         AST_VAR, NULL, NULL,
         parser->current_token->str,
         parser->current_token->srcloc);
     CONSUME(parser, TOKEN_IDENT, false);
+    if (!match(parser, TOKEN_LPAREN)) {
+        return CREATE_AST_ZERO(
+            AST_LIB_MEMBER, lib_name, member_name,
+            parser->current_token->srcloc);
+    }
     CONSUME(parser, TOKEN_LPAREN, true);
     AST *arguments = parse_fn_args(parser);
     RETURN_ON_ERROR(arguments);
 
     return CREATE_AST_AST(
-        AST_LIB_CALL, lib_name, fn_name, arguments,
+        AST_LIB_CALL, lib_name, member_name, arguments,
         parser->current_token->srcloc);
 }
 
@@ -521,7 +528,7 @@ static AST *parse_ident(Parser *parser) {
         return parse_function_call(parser);
     }
     if (peek_token(parser, 1).type == TOKEN_COLON) {
-        return parse_library_call(parser);
+        return parse_library_member(parser);
     }
     AST *node = CREATE_AST_STR(
         AST_VAR, NULL, NULL, 

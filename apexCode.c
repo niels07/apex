@@ -424,6 +424,27 @@ static bool compile_library_call(ApexVM *vm, AST *node) {
 }
 
 /**
+ * Compiles an AST node representing access to a library member to bytecode.
+ *
+ * This function compiles the library name and member name, and emits an
+ * instruction to get the library member with the correct library name and
+ * member name.
+ *
+ * @param vm A pointer to the virtual machine structure containing the
+ *           instruction chunk.
+ * @param node The AST node representing the library member access to be
+ *             compiled.
+ * @return true if the library member access was compiled successfully, false
+ *         otherwise.
+ */
+static bool compile_lib_member(ApexVM *vm, AST *node) {
+    EMIT_OP_STR(vm, OP_PUSH_STR, node->left->value.strval); // Library name
+    EMIT_OP_STR(vm, OP_PUSH_STR, node->right->value.strval); // member name
+    EMIT_OP(vm, OP_GET_LIB_MEMBER);
+    return true;
+}
+
+/**
  * Compiles an AST node representing an assignment to bytecode.
  *
  * This function handles assignments to variables and array elements. For array
@@ -975,6 +996,9 @@ static bool compile_expression(ApexVM *vm, AST *node, bool result_used) {
 
     case AST_LIB_CALL:
         return compile_library_call(vm, node);
+    
+    case AST_LIB_MEMBER:
+        return compile_lib_member(vm, node);
 
     case AST_NEW:
         return compile_new(vm, node);

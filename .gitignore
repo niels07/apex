@@ -1,1 +1,6 @@
 .vscode/
+source/
+mainpage.md
+style.css
+Doxyfile
+
